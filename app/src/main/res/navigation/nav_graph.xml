@@ -25,7 +25,11 @@
     <fragment
         android:id="@+id/favoriteFragment"
         android:name="com.eaor.coffeefee.fragments.FavoriteFragment"
-        android:label="Favorite" />
+        android:label="Favorite">
+        <action
+            android:id="@+id/action_favoriteFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/profileFragment"
