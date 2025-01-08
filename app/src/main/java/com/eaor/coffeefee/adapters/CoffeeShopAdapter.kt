@@ -14,6 +14,13 @@ class CoffeeShopAdapter(private var coffeeShops: List<CoffeeShop>) :
 
     private var filteredCoffeeShops = coffeeShops.toList()
 
+    // Add click listener
+    private var onItemClick: ((CoffeeShop) -> Unit)? = null
+
+    fun setOnItemClickListener(listener: (CoffeeShop) -> Unit) {
+        onItemClick = listener
+    }
+
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val shopName: TextView = view.findViewById(R.id.shopName)
         val caption: TextView = view.findViewById(R.id.caption)
@@ -36,6 +43,11 @@ class CoffeeShopAdapter(private var coffeeShops: List<CoffeeShop>) :
         val coffeeShop = filteredCoffeeShops[position]
         holder.shopName.text = coffeeShop.name
         holder.caption.text = coffeeShop.caption
+
+        // Set click listener
+        holder.itemView.setOnClickListener {
+            onItemClick?.invoke(coffeeShop)
+        }
 
         // Update rating stars
         val rating = coffeeShop.rating.toInt()

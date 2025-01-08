@@ -17,6 +17,9 @@
         <action
             android:id="@+id/action_searchFragment_to_coffeeMapFragment"
             app:destination="@id/coffeeMapFragment" />
+        <action
+            android:id="@+id/action_searchFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
     </fragment>
 
     <fragment
@@ -33,4 +36,16 @@
         android:id="@+id/coffeeMapFragment"
         android:name="com.eaor.coffeefee.fragments.CoffeeMapFragment"
         android:label="CoffeeMapFragment" />
+
+    <fragment
+        android:id="@+id/coffeeFragment"
+        android:name="com.eaor.coffeefee.fragments.CoffeeFragment"
+        android:label="CoffeeFragment">
+        <argument
+            android:name="name"
+            app:argType="string" />
+        <argument
+            android:name="description"
+            app:argType="string" />
+    </fragment>
 </navigation>

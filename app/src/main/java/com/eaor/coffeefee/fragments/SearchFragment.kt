@@ -57,6 +57,14 @@ class SearchFragment : Fragment() {
         val searchView = view.findViewById<SearchView>(R.id.searchView)
         setupSearchView(searchView, adapter)
 
+        adapter.setOnItemClickListener { coffeeShop ->
+            val bundle = Bundle().apply {
+                putString("name", coffeeShop.name)
+                putString("description", "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor.")
+            }
+            findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+        }
+
         return view
     }
 
