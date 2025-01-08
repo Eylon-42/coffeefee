@@ -1,0 +1,10 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Navigation Icon -->
+    <item
+        android:id="@+id/action_navigate"
+        android:icon="@drawable/ic_navigation"
+        android:title="Navigate"
+        app:showAsAction="always" />
+</menu>
