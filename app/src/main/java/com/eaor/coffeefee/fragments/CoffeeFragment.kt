@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import androidx.core.content.ContextCompat
 import com.eaor.coffeefee.R
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -18,10 +19,10 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 
 class CoffeeFragment : Fragment(), OnMapReadyCallback {
-    private var isFavorite = false
-    private var coffeeName = ""
+    private var coffeeName: String = ""
     private var coffeeLatitude: Float = 0f
     private var coffeeLongitude: Float = 0f
+    private var isFavorite: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,8 +43,16 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
         }
 
         val favoriteButton = view.findViewById<ImageButton>(R.id.favoriteButton)
+        favoriteButton.setColorFilter(
+            ContextCompat.getColor(requireContext(), R.color.coffee_primary)
+        )
+        
         favoriteButton.setOnClickListener {
             isFavorite = !isFavorite
+            favoriteButton.setImageResource(
+                if (isFavorite) R.drawable.ic_heart_filled
+                else R.drawable.ic_heart_outline
+            )
         }
 
         arguments?.let { args ->

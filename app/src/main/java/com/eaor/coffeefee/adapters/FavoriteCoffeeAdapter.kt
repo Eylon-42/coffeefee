@@ -15,6 +15,8 @@ class FavoriteCoffeeAdapter(
     private val onItemClick: (CoffeeShop) -> Unit
 ) : RecyclerView.Adapter<FavoriteCoffeeAdapter.ViewHolder>() {
 
+    private val likedStates = mutableMapOf<Int, Boolean>()
+
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val coffeeName: TextView = view.findViewById(R.id.coffeeName)
         val favoriteButton: ImageButton = view.findViewById(R.id.favoriteButton)
@@ -32,15 +34,31 @@ class FavoriteCoffeeAdapter(
         // Set coffee shop name
         holder.coffeeName.text = coffeeShop.name
         
-        // Set favorite button tint using ContextCompat
-        holder.favoriteButton.setColorFilter(
-            ContextCompat.getColor(holder.itemView.context, R.color.coffee_primary)
-        )
+        // Set initial like state
+        val isLiked = likedStates[position] ?: true  // Default to true for favorites
+        updateLikeButton(holder.favoriteButton, isLiked)
+        
+        // Set favorite button click listener
+        holder.favoriteButton.setOnClickListener {
+            val newLikedState = !(likedStates[position] ?: true)
+            likedStates[position] = newLikedState
+            updateLikeButton(holder.favoriteButton, newLikedState)
+        }
         
         // Set click listener for the entire item
         holder.itemView.setOnClickListener {
             onItemClick(coffeeShop)
         }
+    }
+
+    private fun updateLikeButton(button: ImageButton, isLiked: Boolean) {
+        button.setImageResource(
+            if (isLiked) R.drawable.ic_heart_filled
+            else R.drawable.ic_heart_outline
+        )
+        button.setColorFilter(
+            ContextCompat.getColor(button.context, R.color.coffee_primary)
+        )
     }
 
     override fun getItemCount() = coffeeShops.size
