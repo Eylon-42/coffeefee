@@ -98,6 +98,9 @@ class SearchFragment : Fragment() {
         // Get the included toolbar view
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         toolbarView.findViewById<TextView>(R.id.toolbarTitle).text = "Search"
+        // Hide back button as this is the main search screen
+        view.findViewById<ImageButton>(R.id.backButton).visibility = View.GONE
+
         // Show and set up navigation button
         toolbar.findViewById<ImageButton>(R.id.navigationButton).apply {
             visibility = View.VISIBLE

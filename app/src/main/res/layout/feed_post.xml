@@ -33,6 +33,16 @@
             app:layout_constraintTop_toTopOf="@id/userAvatar"
             app:layout_constraintEnd_toEndOf="parent"/>
 
+        <ImageButton
+            android:id="@+id/postOptionsButton"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_more_vert"
+            android:contentDescription="Post options"
+            app:layout_constraintTop_toTopOf="@id/userName"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
         <TextView
             android:id="@+id/userDescription"
             android:layout_width="0dp"

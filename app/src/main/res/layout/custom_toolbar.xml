@@ -16,14 +16,22 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_arrow_back"
+            android:padding="12dp"
+            android:contentDescription="Back"/>
+
         <TextView
             android:id="@+id/toolbarTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textColor="@android:color/white"
-            android:textSize="20sp"
-            android:layout_marginStart="16dp"/>
+            android:textSize="20sp"/>
 
         <ImageButton
             android:id="@+id/navigationButton"

@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
@@ -34,6 +35,9 @@ class FeedFragment : Fragment() {
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
         view.findViewById<TextView>(R.id.toolbarTitle).text = "Feed"
 
+        // Hide back button as this is the main feed screen
+        view.findViewById<ImageButton>(R.id.backButton).visibility = View.GONE
+
         // Set up RecyclerView
         val recyclerView = view.findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -42,15 +46,15 @@ class FeedFragment : Fragment() {
         val feedItems = listOf(
             FeedItem(
                 "User 1",
-                "Coffee Enthusiast",
+                "@${CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818).name}",
                 CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818),
                 "Amazing atmosphere and great coffee! Must visit when in Tel Aviv."
             ),
             FeedItem(
                 "User 2",
-                "Coffee Connoisseur",
+                "@${CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345).name}",
                 CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345),
-                "Traditional coffee making at its finest. The aroma is incredible!"
+                "Best traditional coffee in Jerusalem!"
             ),
             FeedItem(
                 "User 3",
