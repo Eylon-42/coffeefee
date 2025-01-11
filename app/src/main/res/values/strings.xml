@@ -1,3 +1,13 @@
 <resources>
-    <string name="app_name">Coffeefee</string>
+    <string name="app_name">CoffeeFee</string>
+    <string name="navigate_back">Navigate back</string>
+    <string name="view_coffee_house">View Coffee House</string>
+    <string name="description">Description</string>
+    <string name="coffee_map">Coffee Map</string>
+    <string name="favorites">Favorites</string>
+    <string name="coffee_image">Coffee shop image</string>
+    <string name="favorite_button">Favorite button</string>
+    <string name="rating_icon">Rating icon</string>
+    <string name="search_coffee_shops">Search coffee shops</string>
+    <string name="arrow_icon">Navigate to details</string>
 </resources>
