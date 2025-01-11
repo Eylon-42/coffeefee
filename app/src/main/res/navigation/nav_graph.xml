@@ -8,8 +8,12 @@
     <fragment
         android:id="@+id/feedFragment"
         android:name="com.eaor.coffeefee.fragments.FeedFragment"
-        android:label="Feed" />
-
+        android:label="Feed">
+        <action
+    android:id="@+id/action_feedFragment_to_coffeeFragment"
+    app:destination="@id/coffeeFragment" />
+    </fragment>
+        
     <fragment
         android:id="@+id/searchFragment"
         android:name="com.eaor.coffeefee.fragments.SearchFragment"

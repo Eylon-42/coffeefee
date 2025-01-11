@@ -6,15 +6,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
-import androidx.navigation.fragment.navArgs
+import androidx.core.content.ContextCompat
 import com.eaor.coffeefee.R
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MarkerOptions
 
-class CoffeeFragment : Fragment() {
-    private var isFavorite = false
+class CoffeeFragment : Fragment(), OnMapReadyCallback {
+    private var coffeeName: String = ""
+    private var coffeeLatitude: Float = 0f
+    private var coffeeLongitude: Float = 0f
+    private var isFavorite: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -27,18 +35,18 @@ class CoffeeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Setup toolbar
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
-        (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
-        (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
-
-        // Setup back button
+        toolbar.title = ""
+        
         view.findViewById<ImageButton>(R.id.backButton).setOnClickListener {
             findNavController().navigateUp()
         }
 
-        // Setup favorite button
         val favoriteButton = view.findViewById<ImageButton>(R.id.favoriteButton)
+        favoriteButton.setColorFilter(
+            ContextCompat.getColor(requireContext(), R.color.coffee_primary)
+        )
+        
         favoriteButton.setOnClickListener {
             isFavorite = !isFavorite
             favoriteButton.setImageResource(
@@ -47,15 +55,32 @@ class CoffeeFragment : Fragment() {
             )
         }
 
-        // Get coffee shop data from arguments
         arguments?.let { args ->
-            val name = args.getString("name", "")
+            coffeeName = args.getString("name", "")
             val description = args.getString("description", "")
-            
-            // Set coffee shop name in both title and content
-            view.findViewById<TextView>(R.id.toolbarTitle).text = name
-            view.findViewById<TextView>(R.id.coffeeName).text = name
+            coffeeLatitude = args.getFloat("latitude", 0f)
+            coffeeLongitude = args.getFloat("longitude", 0f)
+
+            view.findViewById<TextView>(R.id.toolbarTitle).text = coffeeName
+            view.findViewById<TextView>(R.id.coffeeName).text = coffeeName
             view.findViewById<TextView>(R.id.descriptionText).text = description
+
+            val mapFragment = childFragmentManager
+                .findFragmentById(R.id.coffeeLocationMap) as SupportMapFragment
+            
+            // Enable lite mode through bundle
+            val bundle = Bundle().apply {
+                putBoolean("lite_mode", true)
+            }
+            mapFragment.arguments = bundle
+            
+            mapFragment.getMapAsync(this)
         }
+    }
+
+    override fun onMapReady(googleMap: GoogleMap) {
+        val coffeeLocation = LatLng(coffeeLatitude.toDouble(), coffeeLongitude.toDouble())
+        googleMap.addMarker(MarkerOptions().position(coffeeLocation).title(coffeeName))
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(coffeeLocation, 15f))
     }
 } 
