@@ -9,6 +9,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 
@@ -55,11 +56,8 @@ class SignInFragment : Fragment() {
         }
 
         registerButton.setOnClickListener {
-            // Navigate to RegisterFragment
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.auth_fragment_container, RegisterFragment())  // Correct container ID
-                .addToBackStack(null) // Add this transaction to the back stack
-                .commit()
+            // Navigate to RegisterFragment using Navigation component
+            findNavController().navigate(R.id.action_signInFragment_to_registerFragment)
         }
     }
 

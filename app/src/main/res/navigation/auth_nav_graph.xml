@@ -18,8 +18,19 @@
         android:name="com.eaor.coffeefee.fragments.RegisterFragment"
         android:label="RegisterFragment">
         <action
-            android:id="@+id/action_registerFragment_to_signInFragment"
-            app:destination="@id/signInFragment" />
+            android:id="@+id/action_registerFragment_to_getToKnowYouFragment"
+            app:destination="@id/getToKnowYouFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/getToKnowYouFragment"
+        android:name="com.eaor.coffeefee.fragments.GetToKnowYouFragment"
+        android:label="GetToKnowYouFragment">
+        <action
+            android:id="@+id/action_getToKnowYouFragment_to_signInFragment"
+            app:destination="@id/signInFragment"
+            app:popUpTo="@id/signInFragment"
+            app:popUpToInclusive="true" />
     </fragment>
 
 </navigation> 
