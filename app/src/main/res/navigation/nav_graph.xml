@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_graph"
     app:startDestination="@id/feedFragment">
 
@@ -12,15 +13,43 @@
     <fragment
         android:id="@+id/searchFragment"
         android:name="com.eaor.coffeefee.fragments.SearchFragment"
-        android:label="Search" />
+        android:label="SearchFragment">
+        <action
+            android:id="@+id/action_searchFragment_to_coffeeMapFragment"
+            app:destination="@id/coffeeMapFragment" />
+        <action
+            android:id="@+id/action_searchFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/favoriteFragment"
         android:name="com.eaor.coffeefee.fragments.FavoriteFragment"
-        android:label="Favorite" />
+        android:label="Favorite">
+        <action
+            android:id="@+id/action_favoriteFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/profileFragment"
         android:name="com.eaor.coffeefee.fragments.ProfileFragment"
         android:label="Profile" />
+
+    <fragment
+        android:id="@+id/coffeeMapFragment"
+        android:name="com.eaor.coffeefee.fragments.CoffeeMapFragment"
+        android:label="CoffeeMapFragment" />
+
+    <fragment
+        android:id="@+id/coffeeFragment"
+        android:name="com.eaor.coffeefee.fragments.CoffeeFragment"
+        android:label="CoffeeFragment">
+        <argument
+            android:name="name"
+            app:argType="string" />
+        <argument
+            android:name="description"
+            app:argType="string" />
+    </fragment>
 </navigation>
