@@ -14,7 +14,8 @@ import com.eaor.coffeefee.models.FeedItem
 
 class FeedAdapter(
     private val feedItems: List<FeedItem>,
-    private val onMoreInfoClick: (FeedItem) -> Unit
+    private val onMoreInfoClick: (FeedItem) -> Unit,
+    private val showOptionsMenu: Boolean = false
 ) : RecyclerView.Adapter<FeedAdapter.ViewHolder>() {
 
     private val likedStates = mutableMapOf<Int, Boolean>()
@@ -45,6 +46,9 @@ class FeedAdapter(
         holder.userName.text = feedItem.userName
         holder.userDescription.text = feedItem.userDescription
         holder.reviewText.text = feedItem.reviewText
+        
+        // Show/hide options menu based on parameter
+        holder.postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
         
         // Set initial like button state
         val isLiked = likedStates[position] ?: false

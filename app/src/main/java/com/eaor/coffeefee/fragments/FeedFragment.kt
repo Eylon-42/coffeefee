@@ -64,16 +64,20 @@ class FeedFragment : Fragment() {
             )
         )
 
-        val adapter = FeedAdapter(feedItems) { feedItem ->
-            // Navigate to CoffeeFragment with the coffee shop details
-            val bundle = Bundle().apply {
-                putString("name", feedItem.coffeeShop.name)
-                putString("description", feedItem.coffeeShop.caption)
-                putFloat("latitude", feedItem.coffeeShop.latitude.toFloat())
-                putFloat("longitude", feedItem.coffeeShop.longitude.toFloat())
-            }
-            findNavController().navigate(R.id.action_feedFragment_to_coffeeFragment, bundle)
-        }
+        val adapter = FeedAdapter(
+            feedItems,
+            onMoreInfoClick = { feedItem ->
+                // Navigate to CoffeeFragment with the coffee shop details
+                val bundle = Bundle().apply {
+                    putString("name", feedItem.coffeeShop.name)
+                    putString("description", feedItem.coffeeShop.caption)
+                    putFloat("latitude", feedItem.coffeeShop.latitude.toFloat())
+                    putFloat("longitude", feedItem.coffeeShop.longitude.toFloat())
+                }
+                findNavController().navigate(R.id.action_feedFragment_to_coffeeFragment, bundle)
+            },
+            showOptionsMenu = false
+        )
         recyclerView.adapter = adapter
     }
 }

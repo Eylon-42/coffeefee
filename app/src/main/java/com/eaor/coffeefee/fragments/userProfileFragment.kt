@@ -83,15 +83,18 @@ class UserProfileFragment : Fragment() {
             )
         )
 
-        val adapter = FeedAdapter(userPosts) { feedItem ->
-            val bundle = Bundle().apply {
-                putString("name", feedItem.coffeeShop.name)
-                putString("description", feedItem.coffeeShop.caption)
-                putFloat("latitude", feedItem.coffeeShop.latitude.toFloat())
-                putFloat("longitude", feedItem.coffeeShop.longitude.toFloat())
-            }
-            findNavController().navigate(R.id.action_userProfileFragment_to_coffeeFragment, bundle)
-        }.apply {
+        val adapter = FeedAdapter(userPosts, 
+            onMoreInfoClick = { feedItem ->
+                val bundle = Bundle().apply {
+                    putString("name", feedItem.coffeeShop.name)
+                    putString("description", feedItem.coffeeShop.caption)
+                    putFloat("latitude", feedItem.coffeeShop.latitude.toFloat())
+                    putFloat("longitude", feedItem.coffeeShop.longitude.toFloat())
+                }
+                findNavController().navigate(R.id.action_userProfileFragment_to_coffeeFragment, bundle)
+            },
+            showOptionsMenu = true
+        ).apply {
             setPostOptionsClickListener { view, position ->
                 PopupMenu(requireContext(), view).apply {
                     menuInflater.inflate(R.menu.post_options_menu, menu)
