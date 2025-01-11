@@ -1,6 +1,5 @@
 package com.eaor.coffeefee.fragments
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,7 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.eaor.coffeefee.MainActivity
+import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
 
 class RegisterFragment : Fragment() {
@@ -49,10 +48,8 @@ class RegisterFragment : Fragment() {
             if (validateInput(name, email, password, confirmPassword)) {
                 // Check credentials
                 if (email == "test@example.com" && password == "password123") {
-                    // Successfully logged in, navigate to MainActivity
-                    val intent = Intent(activity, MainActivity::class.java)
-                    startActivity(intent)
-                    activity?.finish() // Close the RegisterActivity
+                    // Navigate to GetToKnowYou fragment
+                    findNavController().navigate(R.id.action_registerFragment_to_getToKnowYouFragment)
                 } else {
                     // Invalid credentials
                     Toast.makeText(context, "Invalid email or password", Toast.LENGTH_SHORT).show()
@@ -62,7 +59,7 @@ class RegisterFragment : Fragment() {
 
         backToSignInButton.setOnClickListener {
             // Go back to SignInFragment
-            parentFragmentManager.popBackStack()
+            findNavController().navigateUp()
         }
     }
 
