@@ -36,9 +36,21 @@
     </fragment>
 
     <fragment
+        android:id="@+id/profileTab"
+        android:name="com.eaor.coffeefee.fragments.UserProfileFragment"
+        android:label="UserProfileFragment">
+        <action
+            android:id="@+id/action_userProfileFragment_to_profileFragment"
+            app:destination="@id/profileFragment"/>
+        <action
+            android:id="@+id/action_userProfileFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment"/>
+    </fragment>
+
+    <fragment
         android:id="@+id/profileFragment"
         android:name="com.eaor.coffeefee.fragments.ProfileFragment"
-        android:label="Profile" />
+        android:label="ProfileFragment"/>
 
     <fragment
         android:id="@+id/coffeeMapFragment"
@@ -55,5 +67,17 @@
         <argument
             android:name="description"
             app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/userProfileFragment"
+        android:name="com.eaor.coffeefee.fragments.UserProfileFragment"
+        android:label="UserProfile">
+        <action
+            android:id="@+id/action_userProfileFragment_to_profileFragment"
+            app:destination="@id/profileFragment" />
+        <action
+            android:id="@+id/action_userProfileFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
     </fragment>
 </navigation>

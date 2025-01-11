@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -13,10 +14,16 @@ import com.eaor.coffeefee.models.FeedItem
 
 class FeedAdapter(
     private val feedItems: List<FeedItem>,
-    private val onMoreInfoClick: (FeedItem) -> Unit
+    private val onMoreInfoClick: (FeedItem) -> Unit,
+    private val showOptionsMenu: Boolean = false
 ) : RecyclerView.Adapter<FeedAdapter.ViewHolder>() {
 
     private val likedStates = mutableMapOf<Int, Boolean>()
+    private var postOptionsClickListener: ((View, Int) -> Unit)? = null
+
+    fun setPostOptionsClickListener(listener: (View, Int) -> Unit) {
+        postOptionsClickListener = listener
+    }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val userName: TextView = view.findViewById(R.id.userName)
@@ -24,6 +31,7 @@ class FeedAdapter(
         val reviewText: TextView = view.findViewById(R.id.reviewText)
         val moreInfoButton: TextView = view.findViewById(R.id.moreInfoButton)
         val likeButton: ImageView = view.findViewById(R.id.likeButton)
+        val postOptionsButton: ImageButton = view.findViewById(R.id.postOptionsButton)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -36,21 +44,31 @@ class FeedAdapter(
         val feedItem = feedItems[position]
         
         holder.userName.text = feedItem.userName
-        holder.userDescription.text = "Visited ${feedItem.coffeeShop.name}"
+        holder.userDescription.text = feedItem.userDescription
         holder.reviewText.text = feedItem.reviewText
+        
+        // Show/hide options menu based on parameter
+        holder.postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
         
         // Set initial like button state
         val isLiked = likedStates[position] ?: false
         updateLikeButton(holder.likeButton, isLiked)
         
+        // Like button click listener
         holder.likeButton.setOnClickListener {
             val newLikedState = !(likedStates[position] ?: false)
             likedStates[position] = newLikedState
             updateLikeButton(holder.likeButton, newLikedState)
         }
         
+        // More info button click listener
         holder.moreInfoButton.setOnClickListener {
             onMoreInfoClick(feedItem)
+        }
+
+        // Post options button click listener
+        holder.postOptionsButton.setOnClickListener { view ->
+            postOptionsClickListener?.invoke(view, position)
         }
     }
 
@@ -65,4 +83,4 @@ class FeedAdapter(
     }
 
     override fun getItemCount() = feedItems.size
-}
+} 
