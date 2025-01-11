@@ -1,8 +1,24 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(FileInputStream(localPropertiesFile))
+    } else {
+        throw GradleException("local.properties file not found")
+    }
+}
+
+// Validate SDK location
+val sdkDir = localProperties.getProperty("sdk.dir")
+    ?: System.getenv("ANDROID_HOME")
+    ?: throw GradleException("SDK location not found. Please set sdk.dir in local.properties or ANDROID_HOME in environment variables.")
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-//    id("com.android.application")
     id("com.google.gms.google-services")
 }
 
@@ -16,6 +32,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY") ?: ""
+        manifestPlaceholders["FIREBASE_API_KEY"] = localProperties.getProperty("FIREBASE_API_KEY") ?: ""
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -42,6 +61,9 @@ android {
 }
 
 dependencies {
+
+    implementation(libs.play.services.maps)
+    implementation(libs.play.services.location)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.androidx.core.ktx)

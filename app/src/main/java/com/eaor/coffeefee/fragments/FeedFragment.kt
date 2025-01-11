@@ -22,10 +22,15 @@ class FeedFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         
-        val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
+        // Get the included toolbar view
+        val toolbarView = view.findViewById<View>(R.id.toolbar)
+        val toolbar = toolbarView.findViewById<Toolbar>(R.id.toolbar)
+        
+        // Set up the toolbar
         (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
         
-        view.findViewById<TextView>(R.id.toolbarTitle).text = "Feed"
+        // Set the title
+        toolbarView.findViewById<TextView>(R.id.toolbarTitle).text = "Feed"
     }
 } 
