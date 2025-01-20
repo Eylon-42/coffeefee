@@ -10,6 +10,8 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class RegisterFragment : Fragment() {
     private lateinit var nameEditText: EditText
@@ -18,6 +20,8 @@ class RegisterFragment : Fragment() {
     private lateinit var confirmPasswordEditText: EditText
     private lateinit var registerButton: Button
     private lateinit var backToSignInButton: Button
+    private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -30,6 +34,10 @@ class RegisterFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Initialize Firebase
+        auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
+
         // Initialize views
         nameEditText = view.findViewById(R.id.etName)
         emailEditText = view.findViewById(R.id.etEmail)
@@ -38,7 +46,6 @@ class RegisterFragment : Fragment() {
         registerButton = view.findViewById(R.id.btnRegister)
         backToSignInButton = view.findViewById(R.id.tvSignInLink)
 
-        // Set click listeners
         registerButton.setOnClickListener {
             val name = nameEditText.text.toString()
             val email = emailEditText.text.toString()
@@ -46,21 +53,53 @@ class RegisterFragment : Fragment() {
             val confirmPassword = confirmPasswordEditText.text.toString()
 
             if (validateInput(name, email, password, confirmPassword)) {
-                // Check credentials
-                if (email == "test@example.com" && password == "password123") {
-                    // Navigate to GetToKnowYou fragment
-                    findNavController().navigate(R.id.action_registerFragment_to_getToKnowYouFragment)
-                } else {
-                    // Invalid credentials
-                    Toast.makeText(context, "Invalid email or password", Toast.LENGTH_SHORT).show()
-                }
+                createAccount(name, email, password)
             }
         }
 
         backToSignInButton.setOnClickListener {
-            // Go back to SignInFragment
             findNavController().navigateUp()
         }
+    }
+
+    private fun createAccount(name: String, email: String, password: String) {
+        registerButton.isEnabled = false
+
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    // Create user document in Firestore
+                    val userId = auth.currentUser?.uid
+                    if (userId != null) {
+                        val userData = hashMapOf(
+                            "name" to name,
+                            "email" to email
+                        )
+
+                        db.collection("Users")
+                            .document(userId)
+                            .set(userData)
+                            .addOnSuccessListener {
+                                findNavController().navigate(R.id.action_registerFragment_to_getToKnowYouFragment)
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(
+                                    context,
+                                    "Failed to save user data: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                registerButton.isEnabled = true
+                            }
+                    }
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Registration failed: ${task.exception?.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    registerButton.isEnabled = true
+                }
+            }
     }
 
     private fun validateInput(
@@ -87,6 +126,10 @@ class RegisterFragment : Fragment() {
         }
         if (password != confirmPassword) {
             confirmPasswordEditText.error = "Passwords do not match"
+            return false
+        }
+        if (password.length < 6) {
+            passwordEditText.error = "Password must be at least 6 characters"
             return false
         }
         return true
