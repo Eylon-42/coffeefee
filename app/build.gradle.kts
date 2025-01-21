@@ -33,12 +33,21 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        // Add manifest placeholders for the API keys
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["FIREBASE_API_KEY"] = localProperties.getProperty("FIREBASE_API_KEY") ?: ""
 
+        // Define the API keys in BuildConfig to access them programmatically
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${localProperties.getProperty("MAPS_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${localProperties.getProperty("FIREBASE_API_KEY")}\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // Enable BuildConfig feature
+    buildFeatures {
+        buildConfig = true // Enable BuildConfig
 
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -48,22 +57,25 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
     }
 }
 
 dependencies {
-
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
+    implementation(libs.places.sdk)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.androidx.core.ktx)
@@ -74,6 +86,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.recyclerview)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -81,9 +94,6 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    // Navigation Component
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
-    implementation(libs.navigation.fragment.ktx)
-    implementation(libs.navigation.ui.ktx)
 }

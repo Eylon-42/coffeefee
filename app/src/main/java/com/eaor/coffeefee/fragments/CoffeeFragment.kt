@@ -1,9 +1,12 @@
 package com.eaor.coffeefee.fragments
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
@@ -23,6 +26,8 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
     private var coffeeLatitude: Float = 0f
     private var coffeeLongitude: Float = 0f
     private var isFavorite: Boolean = false
+    private lateinit var googleMap: GoogleMap
+    private lateinit var showLocationButton: Button
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -55,6 +60,7 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             )
         }
 
+        showLocationButton = view.findViewById(R.id.showLocationButton)
         arguments?.let { args ->
             coffeeName = args.getString("name", "")
             val description = args.getString("description", "")
@@ -68,19 +74,30 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             val mapFragment = childFragmentManager
                 .findFragmentById(R.id.coffeeLocationMap) as SupportMapFragment
             
-            // Enable lite mode through bundle
-            val bundle = Bundle().apply {
-                putBoolean("lite_mode", true)
-            }
-            mapFragment.arguments = bundle
+        
             
             mapFragment.getMapAsync(this)
+        }
+
+
+        
+        showLocationButton.setOnClickListener {
+            val bundle = Bundle().apply {
+                putString("name", coffeeName)
+            }
+            findNavController().navigate(R.id.action_coffeeFragment_to_coffeeMapFragment, bundle)
         }
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
+        this.googleMap = googleMap
+
+        // Add a marker for the coffee shop location
         val coffeeLocation = LatLng(coffeeLatitude.toDouble(), coffeeLongitude.toDouble())
-        googleMap.addMarker(MarkerOptions().position(coffeeLocation).title(coffeeName))
+        val marker = googleMap.addMarker(MarkerOptions().position(coffeeLocation).title(coffeeName))
         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(coffeeLocation, 15f))
+
+        // Show the info window for the coffee shop marker
+        marker?.showInfoWindow()
     }
 } 

@@ -35,4 +35,12 @@
         <item name="android:textColor">?android:attr/textColorSecondary</item>
         <item name="android:textSize">14sp</item>
     </style>
+
+    <style name="PopupMenuStyle" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:textColor">@color/black</item>
+    </style>
+
+    <style name="PopupMenuDeleteItem">
+        <item name="android:textColor">#FF0000</item>
+    </style>
 </resources>
