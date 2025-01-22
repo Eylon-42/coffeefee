@@ -43,18 +43,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:layout_marginEnd="16dp">
 
                 <ImageView
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:layout_marginEnd="16dp"
-                    android:background="@drawable/circle_background"
-                    android:src="@drawable/ic_profile_placeholder" />
+                    android:id="@+id/userAvatar"
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:src="@drawable/ic_profile"
+                    android:background="@drawable/circle_background"/>
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
                     android:text="Replace"
                     android:textColor="@android:color/holo_red_dark"
                     android:textSize="16sp"
@@ -63,13 +65,14 @@
 
             <!-- User Name Field -->
             <EditText
+                android:id="@+id/editUserName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
+                android:background="@drawable/edit_text_background"
                 android:hint="Name"
-                android:id="@+id/editUserName"
                 android:inputType="textPersonName"
-                android:background="@drawable/edit_text_background" />
+                android:padding="6dp" />
 
             <!-- Email Field -->
             <EditText
@@ -79,7 +82,8 @@
                 android:hint="Email"
                 android:id="@+id/editUserEmail"
                 android:inputType="textEmailAddress"
-                android:background="@drawable/edit_text_background" />
+                android:background="@drawable/edit_text_background"
+                android:padding="6dp"/>
 
             <!-- Save Button for Personal Section -->
             <Button
@@ -111,7 +115,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:background="@drawable/edit_text_background"
-                android:hint="Today I was in an amazing place - Called the Best Coffee shop" />
+                android:hint="Today I was in an amazing place - Called the Best Coffee shop"
+                android:padding="10dp"/>
 
             <!-- Save Button for About Section -->
             <Button

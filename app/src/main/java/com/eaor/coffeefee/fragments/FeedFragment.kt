@@ -16,6 +16,7 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.FeedAdapter
 import com.eaor.coffeefee.models.CoffeeShop
 import com.eaor.coffeefee.models.FeedItem
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class FeedFragment : Fragment() {
     override fun onCreateView(
@@ -45,22 +46,25 @@ class FeedFragment : Fragment() {
         // Sample data
         val feedItems = listOf(
             FeedItem(
-                "User 1",
-                "@${CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818).name}",
-                CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818),
-                "Amazing atmosphere and great coffee! Must visit when in Tel Aviv."
+                id = "1",
+                userName = "User 1",
+                userDescription = "@${CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818).name}",
+                coffeeShop = CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818),
+                reviewText = "Amazing atmosphere and great coffee! Must visit when in Tel Aviv."
             ),
             FeedItem(
-                "User 2",
-                "@${CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345).name}",
-                CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345),
-                "Best traditional coffee in Jerusalem!"
+                id = "2",
+                userName = "User 2",
+                userDescription = "@${CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345).name}",
+                coffeeShop = CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345),
+                reviewText = "Best traditional coffee in Jerusalem!"
             ),
             FeedItem(
-                "User 3",
-                "Professional Coffee Taster",
-                CoffeeShop("Haifa Bay Cafe", 4.4f, "Scenic coffee shop with bay views", 32.7940, 34.9896),
-                "The view combined with their specialty coffee makes this place special."
+                id = "3",
+                userName = "User 3",
+                userDescription = "Professional Coffee Taster",
+                coffeeShop = CoffeeShop("Haifa Bay Cafe", 4.4f, "Scenic coffee shop with bay views", 32.7940, 34.9896),
+                reviewText = "The view combined with their specialty coffee makes this place special."
             )
         )
 
@@ -76,8 +80,18 @@ class FeedFragment : Fragment() {
                 }
                 findNavController().navigate(R.id.action_feedFragment_to_coffeeFragment, bundle)
             },
+            onCommentClick = { feedItem -> // Handle comment click
+                val bundle = Bundle().apply {
+                    putString("postId", feedItem.id)
+                }
+                findNavController().navigate(R.id.action_feedFragment_to_commentsFragment, bundle)
+            },
             showOptionsMenu = false
         )
         recyclerView.adapter = adapter
+
+        view.findViewById<FloatingActionButton>(R.id.addPostFab).setOnClickListener {
+            findNavController().navigate(R.id.action_feedFragment_to_addPostFragment)
+        }
     }
 }
