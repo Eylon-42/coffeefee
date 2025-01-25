@@ -1,13 +1,17 @@
 package com.eaor.coffeefee.fragments
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
@@ -20,6 +24,7 @@ import com.eaor.coffeefee.models.CoffeeShop
 import com.eaor.coffeefee.models.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.eaor.coffeefee.AuthActivity
 
 class UserProfileFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -71,20 +76,8 @@ class UserProfileFragment : Fragment() {
 
         // Setup edit button with dropdown menu
         val editButton = view.findViewById<ImageButton>(R.id.editButton)
-        editButton.setOnClickListener { v ->
-            PopupMenu(requireContext(), v).apply {
-                menuInflater.inflate(R.menu.profile_edit_menu, menu)
-                setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        R.id.action_edit_profile -> {
-                            findNavController().navigate(R.id.action_userProfileFragment_to_profileFragment)
-                            true
-                        }
-                        else -> false
-                    }
-                }
-                show()
-            }
+        editButton.setOnClickListener {
+            showPopupMenu(it)
         }
 
         // Setup RecyclerView for posts
@@ -152,5 +145,36 @@ class UserProfileFragment : Fragment() {
             }
         }
         recyclerView.adapter = adapter
+    }
+
+    private fun showPopupMenu(view: View) {
+        val popupMenu = PopupMenu(requireContext(), view)
+        val inflater: MenuInflater = popupMenu.menuInflater
+        inflater.inflate(R.menu.profile_edit_menu, popupMenu.menu) // Create a menu resource file for the options
+
+        popupMenu.setOnMenuItemClickListener { menuItem ->
+            handleMenuItemClick(menuItem)
+        }
+        popupMenu.show()
+    }
+
+    private fun handleMenuItemClick(menuItem: MenuItem): Boolean {
+        return when (menuItem.itemId) {
+            R.id.action_logout -> {
+                logoutUser()
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun logoutUser() {
+        auth.signOut()
+        Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+        
+        // Navigate to LoginActivity
+        val intent = Intent(requireContext(), AuthActivity::class.java)
+        startActivity(intent)
+        requireActivity().finish() // Optional: Finish the current activity if you want to remove it from the back stack
     }
 }

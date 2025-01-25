@@ -7,5 +7,6 @@
         android:id="@+id/action_delete_post"
         android:title="Delete"
         android:textStyle="bold"
-        android:textColor="#FF0000"/>
+        android:textColor="@color/coffee_light"
+        />
 </menu>
