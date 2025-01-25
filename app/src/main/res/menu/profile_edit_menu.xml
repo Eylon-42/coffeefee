@@ -9,7 +9,7 @@
          <item
         android:id="@+id/action_logout"
         android:title="Log Out"
-        android:titleTextColor="@android:color/holo_red_dark"
+        android:titleTextColor="@color/red"
         android:icon="@drawable/ic_more_vert"
         app:showAsAction="always"/>
 </menu>
