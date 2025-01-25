@@ -18,8 +18,13 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.FeedAdapter
 import com.eaor.coffeefee.models.CoffeeShop
 import com.eaor.coffeefee.models.FeedItem
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class UserProfileFragment : Fragment() {
+    private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -31,6 +36,10 @@ class UserProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Initialize Firebase
+        auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
+        
         // Setup toolbar
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
@@ -40,8 +49,23 @@ class UserProfileFragment : Fragment() {
         // Hide back button in toolbar for main profile page
         view.findViewById<ImageButton>(R.id.backButton).visibility = View.GONE
 
+        // Load user name from Firestore
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            db.collection("Users")
+                .document(currentUser.uid)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document != null && document.exists()) {
+                        val name = document.getString("name")
+                        if (name != null) {
+                            view.findViewById<TextView>(R.id.userName).text = name
+                        }
+                    }
+                }
+        }
+
         // Set user info
-        view.findViewById<TextView>(R.id.userName).text = "Name"
         view.findViewById<TextView>(R.id.userAbout).text = 
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor."
 

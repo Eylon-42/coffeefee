@@ -14,7 +14,7 @@ val localProperties = Properties().apply {
 val sdkDir = localProperties.getProperty("sdk.dir")
     ?: System.getenv("ANDROID_HOME")
     ?: throw GradleException("SDK location not found. Please set sdk.dir in local.properties or ANDROID_HOME in environment variables.")
-
+    
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -96,4 +96,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
+    implementation(libs.navigation.fragment.ktx)
+    implementation(libs.navigation.ui.ktx)
+    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore-ktx")
 }

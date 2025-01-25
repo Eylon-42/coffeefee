@@ -8,17 +8,23 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import androidx.core.content.ContextCompat
 
 class GetToKnowYouFragment : Fragment() {
     private lateinit var answer1EditText: EditText
     private lateinit var answer2EditText: EditText
     private lateinit var answer3EditText: EditText
-    private lateinit var nextButton: Button
-    private lateinit var backButton: ImageButton
+    private lateinit var nextButton: View
+    private lateinit var backButton: View
+    private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -30,6 +36,10 @@ class GetToKnowYouFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // Initialize Firebase
+        auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
 
         // Initialize views
         answer1EditText = view.findViewById(R.id.etAnswer1)
@@ -47,16 +57,18 @@ class GetToKnowYouFragment : Fragment() {
         }
 
         // Handle system back button
-        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                findNavController().navigateUp()
+        requireActivity().onBackPressedDispatcher.addCallback(
+            viewLifecycleOwner,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    findNavController().navigateUp()
+                }
             }
-        })
+        )
 
         nextButton.setOnClickListener {
             if (validateAnswers()) {
-                // Navigate to login fragment
-                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+                savePreferences()
             }
         }
     }
@@ -67,29 +79,54 @@ class GetToKnowYouFragment : Fragment() {
     }
 
     private fun updateBackButtonForTheme() {
-        val isDarkTheme = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        backButton.imageTintList = resources.getColorStateList(
-            if (isDarkTheme) android.R.color.white else android.R.color.black,
-            requireContext().theme
+        val backBtn = view?.findViewById<ImageButton>(R.id.btnBack)
+        backBtn?.setColorFilter(
+            ContextCompat.getColor(requireContext(), android.R.color.black)
         )
     }
 
+    private fun savePreferences() {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Toast.makeText(context, "User not authenticated", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val preferences = hashMapOf(
+            "first" to answer1EditText.text.toString(),
+            "second" to answer2EditText.text.toString(),
+            "third" to answer3EditText.text.toString()
+        )
+
+        db.collection("Users")
+            .document(userId)
+            .update("preferences", preferences)
+            .addOnSuccessListener {
+                // Navigate to sign in fragment after successful save
+                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(
+                    context,
+                    "Failed to save preferences: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+    }
+
     private fun validateAnswers(): Boolean {
-        var isValid = true
-
-        if (answer1EditText.text.toString().isEmpty()) {
+        if (answer1EditText.text.isNullOrEmpty()) {
             answer1EditText.error = "Please answer this question"
-            isValid = false
+            return false
         }
-        if (answer2EditText.text.toString().isEmpty()) {
+        if (answer2EditText.text.isNullOrEmpty()) {
             answer2EditText.error = "Please answer this question"
-            isValid = false
+            return false
         }
-        if (answer3EditText.text.toString().isEmpty()) {
+        if (answer3EditText.text.isNullOrEmpty()) {
             answer3EditText.error = "Please answer this question"
-            isValid = false
+            return false
         }
-
-        return isValid
+        return true
     }
 } 
