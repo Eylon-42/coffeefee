@@ -35,11 +35,9 @@ android {
 
         // Add manifest placeholders for the API keys
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY") ?: ""
-        manifestPlaceholders["FIREBASE_API_KEY"] = localProperties.getProperty("FIREBASE_API_KEY") ?: ""
 
         // Define the API keys in BuildConfig to access them programmatically
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${localProperties.getProperty("MAPS_API_KEY")}\"")
-        buildConfigField("String", "FIREBASE_API_KEY", "\"${localProperties.getProperty("FIREBASE_API_KEY")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
