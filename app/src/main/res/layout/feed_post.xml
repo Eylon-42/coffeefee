@@ -96,5 +96,18 @@
             app:layout_constraintStart_toEndOf="@id/moreInfoButton"
             android:layout_marginStart="8dp"/>
 
+        <ImageButton
+            android:id="@+id/commentsButton"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Comments"
+            android:src="@drawable/ic_comments"
+            app:layout_constraintBottom_toBottomOf="@id/likeButton"
+            app:layout_constraintStart_toEndOf="@id/likeButton"
+            app:layout_constraintTop_toTopOf="@id/likeButton" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.cardview.widget.CardView>

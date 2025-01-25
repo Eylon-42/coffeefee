@@ -5,5 +5,6 @@ data class CoffeeShop(
     val rating: Float,  // Rating from 0 to 5
     val caption: String,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    var address: String? = null
 ) 

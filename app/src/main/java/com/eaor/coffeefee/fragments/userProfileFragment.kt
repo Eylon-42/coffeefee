@@ -94,20 +94,23 @@ class UserProfileFragment : Fragment() {
         // Sample posts data
         val userPosts = listOf(
             FeedItem(
-                "Current User",
-                "@${CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in Tel Aviv", 32.0853, 34.7818).name}",
-                CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in Tel Aviv", 32.0853, 34.7818),
-                "Amazing atmosphere and great coffee!"
+                id = "1",
+                userName = "Current User",
+                userDescription = "@${CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in Tel Aviv", 32.0853, 34.7818).name}",
+                coffeeShop = CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in Tel Aviv", 32.0853, 34.7818),
+                reviewText = "Amazing atmosphere and great coffee!"
             ),
             FeedItem(
-                "Current User",
-                "@${CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe", 31.7767, 35.2345).name}",
-                CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe", 31.7767, 35.2345),
-                "Best traditional coffee in Jerusalem!"
+                id = "2",
+                userName = "Current User",
+                userDescription = "@${CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe", 31.7767, 35.2345).name}",
+                coffeeShop = CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe", 31.7767, 35.2345),
+                reviewText = "Best traditional coffee in Jerusalem!"
             )
         )
 
-        val adapter = FeedAdapter(userPosts, 
+        val adapter = FeedAdapter(
+            userPosts,
             onMoreInfoClick = { feedItem ->
                 val bundle = Bundle().apply {
                     putString("name", feedItem.coffeeShop.name)
@@ -117,15 +120,24 @@ class UserProfileFragment : Fragment() {
                 }
                 findNavController().navigate(R.id.action_userProfileFragment_to_coffeeFragment, bundle)
             },
+            onCommentClick = { feedItem ->
+                val bundle = Bundle().apply {
+                    putString("postId", feedItem.id)
+                }
+                findNavController().navigate(R.id.action_userProfileFragment_to_commentsFragment, bundle)
+            },
             showOptionsMenu = true
         ).apply {
             setPostOptionsClickListener { view, position ->
-                PopupMenu(requireContext(), view).apply {
+                PopupMenu(requireContext(), view, R.style.PopupMenuStyle).apply {
                     menuInflater.inflate(R.menu.post_options_menu, menu)
                     setOnMenuItemClickListener { item ->
                         when (item.itemId) {
                             R.id.action_edit_post -> {
-                                // TODO: Implement edit functionality
+                                val bundle = Bundle().apply {
+                                    putString("postText", userPosts[position].reviewText)
+                                }
+                                findNavController().navigate(R.id.action_userProfileFragment_to_editPostFragment, bundle)
                                 true
                             }
                             R.id.action_delete_post -> {
