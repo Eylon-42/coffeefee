@@ -25,10 +25,14 @@ import com.eaor.coffeefee.models.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.eaor.coffeefee.AuthActivity
+import com.eaor.coffeefee.data.AppDatabase
+import com.eaor.coffeefee.repository.UserRepository
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 
 class UserProfileFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
-    private lateinit var db: FirebaseFirestore
+    private lateinit var userRepository: UserRepository
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -41,9 +45,11 @@ class UserProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Initialize Firebase
+        // Initialize Firebase and Repository
         auth = FirebaseAuth.getInstance()
-        db = FirebaseFirestore.getInstance()
+        val db = FirebaseFirestore.getInstance()
+        val userDao = AppDatabase.getDatabase(requireContext()).userDao()
+        userRepository = UserRepository(userDao, db)
         
         // Setup toolbar
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
@@ -54,21 +60,8 @@ class UserProfileFragment : Fragment() {
         // Hide back button in toolbar for main profile page
         view.findViewById<ImageButton>(R.id.backButton).visibility = View.GONE
 
-        // Load user name from Firestore
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            db.collection("Users")
-                .document(currentUser.uid)
-                .get()
-                .addOnSuccessListener { document ->
-                    if (document != null && document.exists()) {
-                        val name = document.getString("name")
-                        if (name != null) {
-                            view.findViewById<TextView>(R.id.userName).text = name
-                        }
-                    }
-                }
-        }
+        // Load user data from cache/Firestore
+        loadUserData(view)
 
         // Set user info
         view.findViewById<TextView>(R.id.userAbout).text = 
@@ -145,6 +138,26 @@ class UserProfileFragment : Fragment() {
             }
         }
         recyclerView.adapter = adapter
+    }
+
+    private fun loadUserData(view: View) {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val user = userRepository.getUserData(currentUser.uid)
+                    user?.let {
+                        view.findViewById<TextView>(R.id.userName).text = it.name
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        context,
+                        "Error loading user data: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun showPopupMenu(view: View) {
