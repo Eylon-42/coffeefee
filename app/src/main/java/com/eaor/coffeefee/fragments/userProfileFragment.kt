@@ -2,6 +2,7 @@ package com.eaor.coffeefee.fragments
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -29,6 +30,8 @@ import com.eaor.coffeefee.data.AppDatabase
 import com.eaor.coffeefee.repository.UserRepository
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
+import com.squareup.picasso.Picasso
+
 
 class UserProfileFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -148,8 +151,17 @@ class UserProfileFragment : Fragment() {
                     val user = userRepository.getUserData(currentUser.uid)
                     user?.let {
                         view.findViewById<TextView>(R.id.userName).text = it.name
+
+                        it.profilePictureUrl?.let { url ->
+                        Picasso.get()
+                            .load(url)
+                            .placeholder(R.drawable.ic_profile) // Placeholder image
+                            .error(R.drawable.ic_error as Int) // Error image
+                            .into(view.findViewById<ImageView>(R.id.userAvatar)) // Load into the existing ImageView
+                    }
                     }
                 } catch (e: Exception) {
+                    Log.e("UserRepository", "Error caching user: ${e.message}")
                     Toast.makeText(
                         context,
                         "Error loading user data: ${e.message}",

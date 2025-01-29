@@ -107,4 +107,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("com.squareup.picasso:picasso:2.71828") // Add this line
+
 }
