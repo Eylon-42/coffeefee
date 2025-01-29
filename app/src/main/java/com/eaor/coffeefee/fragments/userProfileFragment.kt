@@ -173,6 +173,11 @@ class UserProfileFragment : Fragment() {
 
     private fun handleMenuItemClick(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
+            R.id.action_edit_profile -> {
+                // Navigate to ProfileFragment
+                findNavController().navigate(R.id.action_userProfileFragment_to_profileFragment)
+                true
+            }
             R.id.action_logout -> {
                 logoutUser()
                 true
