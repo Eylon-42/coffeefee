@@ -5,102 +5,191 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!-- Back Button -->
     <ImageButton
         android:id="@+id/btnBack"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginTop="4dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="32dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="Back"
         android:src="@drawable/ic_arrow_back"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Title -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="88dp"
+        android:layout_marginStart="16dp"
         android:text="Get To Know You"
-        android:textSize="24sp"
+        android:textSize="30sp"
         android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintStart_toEndOf="@id/btnBack"
+        app:layout_constraintBottom_toBottomOf="@id/btnBack" />
 
+    <!-- Question 1 -->
     <TextView
         android:id="@+id/tvQuestion1"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Question about user Fav"
+        android:text="Favorite coffee drink?"
+        android:textSize="20sp"
+        android:textStyle="bold"
         android:layout_marginTop="48dp"
         android:layout_marginHorizontal="24dp"
         app:layout_constraintTop_toBottomOf="@id/tvTitle"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <EditText
-        android:id="@+id/etAnswer1"
+    <TextView
+        android:id="@+id/tvExample1"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Label"
+        android:text="(e.g., Espresso, latte, or cold brew)"
+        android:textSize="14sp"
         android:layout_marginHorizontal="24dp"
+        android:textColor="@android:color/darker_gray"
         app:layout_constraintTop_toBottomOf="@id/tvQuestion1"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <EditText
+        android:id="@+id/etCoffeeDrink"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter your favorite coffee drink"
+        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/tvExample1"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Question 2 -->
     <TextView
         android:id="@+id/tvQuestion2"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Question about user Fav"
-        android:layout_marginTop="24dp"
+        android:text="Dietary needs?"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginTop="36dp"
         android:layout_marginHorizontal="24dp"
-        app:layout_constraintTop_toBottomOf="@id/etAnswer1"
+        app:layout_constraintTop_toBottomOf="@id/etCoffeeDrink"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <EditText
-        android:id="@+id/etAnswer2"
+    <TextView
+        android:id="@+id/tvExample2"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Label"
+        android:text="(e.g., Non-dairy milk or gluten-free options)"
+        android:textSize="14sp"
         android:layout_marginHorizontal="24dp"
+        android:textColor="@android:color/darker_gray"
         app:layout_constraintTop_toBottomOf="@id/tvQuestion2"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <EditText
+        android:id="@+id/etDietaryNeeds"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter your dietary needs"
+        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/tvExample2"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Question 3 -->
     <TextView
         android:id="@+id/tvQuestion3"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Question about user Fav"
-        android:layout_marginTop="24dp"
+        android:text="Preferred atmosphere?"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginTop="36dp"
         android:layout_marginHorizontal="24dp"
-        app:layout_constraintTop_toBottomOf="@id/etAnswer2"
+        app:layout_constraintTop_toBottomOf="@id/etDietaryNeeds"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <EditText
-        android:id="@+id/etAnswer3"
+    <TextView
+        android:id="@+id/tvExample3"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Label"
+        android:text="(e.g., Quiet workspace or lively social spot)"
+        android:textSize="14sp"
         android:layout_marginHorizontal="24dp"
+        android:textColor="@android:color/darker_gray"
         app:layout_constraintTop_toBottomOf="@id/tvQuestion3"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <EditText
+        android:id="@+id/etAtmosphere"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter your preferred atmosphere"
+        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/tvExample3"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Question 4 -->
+    <TextView
+        android:id="@+id/tvQuestion4"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Location preference?"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginTop="36dp"
+        android:layout_marginHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/etAtmosphere"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/tvExample4"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="(e.g., Near home, work, or a specific area)"
+        android:textSize="14sp"
+        android:layout_marginHorizontal="24dp"
+        android:textColor="@android:color/darker_gray"
+        app:layout_constraintTop_toBottomOf="@id/tvQuestion4"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <EditText
+        android:id="@+id/etLocationPreference"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter your location preference"
+        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/tvExample4"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Next Button -->
     <Button
         android:id="@+id/btnNext"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="116dp"
+        android:layout_marginTop="40dp"
+        android:layout_marginBottom="48dp"
         android:text="Finish"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.498"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/etLocationPreference" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
