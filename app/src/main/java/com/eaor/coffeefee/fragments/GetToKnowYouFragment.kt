@@ -17,9 +17,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
 class GetToKnowYouFragment : Fragment() {
-    private lateinit var nameEditText: EditText
-    private lateinit var emailEditText: EditText
-    private lateinit var passwordEditText: EditText
     private lateinit var coffeeDrinkEditText: EditText
     private lateinit var dietaryNeedsEditText: EditText
     private lateinit var atmosphereEditText: EditText
@@ -45,9 +42,6 @@ class GetToKnowYouFragment : Fragment() {
         db = FirebaseFirestore.getInstance()
 
         // Initialize views
-        nameEditText = view.findViewById(R.id.etName)
-        emailEditText = view.findViewById(R.id.etEmail)
-        passwordEditText = view.findViewById(R.id.etPassword)
         coffeeDrinkEditText = view.findViewById(R.id.etCoffeeDrink)
         dietaryNeedsEditText = view.findViewById(R.id.etDietaryNeeds)
         atmosphereEditText = view.findViewById(R.id.etAtmosphere)
@@ -102,20 +96,16 @@ class GetToKnowYouFragment : Fragment() {
 
         // Prepare data in the required format
         val userDetails = hashMapOf(
-            "name" to nameEditText.text.toString(),
-            "email" to emailEditText.text.toString(),
-            "preferences" to hashMapOf(
                 "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
                 "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
                 "preferredAtmosphere" to atmosphereEditText.text.toString(),
                 "locationPreference" to locationPreferenceEditText.text.toString()
-            )
         )
 
         // Save to Firebase
         db.collection("Users")
             .document(userId)
-            .set(userDetails)
+            .update("preferences",userDetails)
             .addOnSuccessListener {
                 // Navigate to sign-in fragment after saving
                 findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
@@ -130,49 +120,30 @@ class GetToKnowYouFragment : Fragment() {
     }
 
     private fun validateAnswers(): Boolean {
-        var isValid = true
-
-        // Validate name, email, and password
-        if (nameEditText.text.isNullOrEmpty()) {
-            nameEditText.error = "Name is required"
-            isValid = false
-        }
-        if (emailEditText.text.isNullOrEmpty()) {
-            emailEditText.error = "Email is required"
-            isValid = false
-        }
-        if (passwordEditText.text.isNullOrEmpty()) {
-            passwordEditText.error = "Password is required"
-            isValid = false
-        }
-
         // Validate preferences
         if (!isValidAnswer(coffeeDrinkEditText.text.toString())) {
             coffeeDrinkEditText.error = "Invalid input: letters only, max 15 characters"
-            isValid = false
+            return false
         }
         if (!isValidAnswer(dietaryNeedsEditText.text.toString())) {
             dietaryNeedsEditText.error = "Invalid input: letters only, max 15 characters"
-            isValid = false
+            return false
         }
         if (!isValidAnswer(atmosphereEditText.text.toString())) {
             atmosphereEditText.error = "Invalid input: letters only, max 15 characters"
-            isValid = false
+            return false
         }
         if (!isValidAnswer(locationPreferenceEditText.text.toString())) {
             locationPreferenceEditText.error = "Invalid input: letters only, max 15 characters"
-            isValid = false
+            return false
         }
-
-        return isValid
+        return true
     }
 
     private fun isValidAnswer(input: String): Boolean {
-        // Check for empty or invalid input
-        if (input.isEmpty()) return false
-
-        // Regular expression for valid characters (letters, spaces, punctuation)
-        val regex = Regex("^[a-zA-Z\\s,.!?]{1,15}$")
-        return regex.matches(input)
+        if(!input.isNullOrEmpty()) {
+            return true
+        }
+        return false
     }
 }
