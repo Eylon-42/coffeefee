@@ -5,22 +5,22 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import androidx.core.content.ContextCompat
 
 class GetToKnowYouFragment : Fragment() {
-    private lateinit var answer1EditText: EditText
-    private lateinit var answer2EditText: EditText
-    private lateinit var answer3EditText: EditText
+    private lateinit var coffeeDrinkEditText: EditText
+    private lateinit var dietaryNeedsEditText: EditText
+    private lateinit var atmosphereEditText: EditText
+    private lateinit var locationPreferenceEditText: EditText
     private lateinit var nextButton: View
     private lateinit var backButton: View
     private lateinit var auth: FirebaseAuth
@@ -42,9 +42,10 @@ class GetToKnowYouFragment : Fragment() {
         db = FirebaseFirestore.getInstance()
 
         // Initialize views
-        answer1EditText = view.findViewById(R.id.etAnswer1)
-        answer2EditText = view.findViewById(R.id.etAnswer2)
-        answer3EditText = view.findViewById(R.id.etAnswer3)
+        coffeeDrinkEditText = view.findViewById(R.id.etCoffeeDrink)
+        dietaryNeedsEditText = view.findViewById(R.id.etDietaryNeeds)
+        atmosphereEditText = view.findViewById(R.id.etAtmosphere)
+        locationPreferenceEditText = view.findViewById(R.id.etLocationPreference)
         nextButton = view.findViewById(R.id.btnNext)
         backButton = view.findViewById(R.id.btnBack)
 
@@ -66,9 +67,10 @@ class GetToKnowYouFragment : Fragment() {
             }
         )
 
+        // Handle next button click
         nextButton.setOnClickListener {
             if (validateAnswers()) {
-                savePreferences()
+                saveUserDetails()
             }
         }
     }
@@ -85,48 +87,60 @@ class GetToKnowYouFragment : Fragment() {
         )
     }
 
-    private fun savePreferences() {
+    private fun saveUserDetails() {
         val userId = auth.currentUser?.uid
         if (userId == null) {
             Toast.makeText(context, "User not authenticated", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val preferences = hashMapOf(
-            "first" to answer1EditText.text.toString(),
-            "second" to answer2EditText.text.toString(),
-            "third" to answer3EditText.text.toString()
+        // Prepare data in the required format
+        val userDetails = hashMapOf(
+                "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
+                "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
+                "preferredAtmosphere" to atmosphereEditText.text.toString(),
+                "locationPreference" to locationPreferenceEditText.text.toString()
         )
 
+        // Save to Firebase
         db.collection("Users")
             .document(userId)
-            .update("preferences", preferences)
+            .update("preferences",userDetails)
             .addOnSuccessListener {
-                // Navigate to sign in fragment after successful save
+                // Navigate to sign-in fragment after saving
                 findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
             }
             .addOnFailureListener { e ->
                 Toast.makeText(
                     context,
-                    "Failed to save preferences: ${e.message}",
+                    "Failed to save user details: ${e.message}",
                     Toast.LENGTH_SHORT
                 ).show()
             }
     }
 
     private fun validateAnswers(): Boolean {
-        if (answer1EditText.text.isNullOrEmpty()) {
-            answer1EditText.error = "Please answer this question"
+        // Validate preferences
+        if (!isValidAnswer(coffeeDrinkEditText.text.toString())) {
+            coffeeDrinkEditText.error = "Invalid input: letters only, max 15 characters"
             return false
         }
-        if (answer2EditText.text.isNullOrEmpty()) {
-            answer2EditText.error = "Please answer this question"
+        if (!isValidAnswer(dietaryNeedsEditText.text.toString())) {
+            dietaryNeedsEditText.error = "Invalid input: letters only, max 15 characters"
             return false
         }
-        if (answer3EditText.text.isNullOrEmpty()) {
-            answer3EditText.error = "Please answer this question"
+        if (!isValidAnswer(atmosphereEditText.text.toString())) {
+            atmosphereEditText.error = "Invalid input: letters only, max 15 characters"
+            return false
+        }
+        if (!isValidAnswer(locationPreferenceEditText.text.toString())) {
+            locationPreferenceEditText.error = "Invalid input: letters only, max 15 characters"
             return false
         }
         return true
     }
-} 
+
+    private fun isValidAnswer(input: String): Boolean {
+        return input.isNotEmpty()
+    }
+}
