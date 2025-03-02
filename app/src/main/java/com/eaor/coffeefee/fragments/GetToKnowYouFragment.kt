@@ -141,9 +141,6 @@ class GetToKnowYouFragment : Fragment() {
     }
 
     private fun isValidAnswer(input: String): Boolean {
-        if(!input.isNullOrEmpty()) {
-            return true
-        }
-        return false
+        return input.isNotEmpty()
     }
 }
