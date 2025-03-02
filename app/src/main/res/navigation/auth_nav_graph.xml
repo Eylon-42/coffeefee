@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/auth_nav_graph"
+    app:startDestination="@id/signInFragment">
+
+    <fragment
+        android:id="@+id/signInFragment"
+        android:name="com.eaor.coffeefee.fragments.SignInFragment"
+        android:label="SignInFragment">
+        <action
+            android:id="@+id/action_signInFragment_to_registerFragment"
+            app:destination="@id/registerFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/registerFragment"
+        android:name="com.eaor.coffeefee.fragments.RegisterFragment"
+        android:label="RegisterFragment">
+        <action
+            android:id="@+id/action_registerFragment_to_getToKnowYouFragment"
+            app:destination="@id/getToKnowYouFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/getToKnowYouFragment"
+        android:name="com.eaor.coffeefee.fragments.GetToKnowYouFragment"
+        android:label="GetToKnowYouFragment">
+        <action
+            android:id="@+id/action_getToKnowYouFragment_to_signInFragment"
+            app:destination="@id/signInFragment"
+            app:popUpTo="@id/signInFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+</navigation> 

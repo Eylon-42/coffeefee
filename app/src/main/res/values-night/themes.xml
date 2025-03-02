@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="Theme.CoffeeFee" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color -->
+        <item name="colorPrimary">@color/coffee_accent</item>
+        <item name="colorPrimaryVariant">@color/coffee_primary_dark</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <!-- Secondary brand color -->
+        <item name="colorSecondary">@color/coffee_light</item>
+        <item name="colorSecondaryVariant">@color/coffee_accent</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Surface colors -->
+        <item name="colorSurface">@color/coffee_primary_dark</item>
+        <item name="colorOnSurface">@color/white</item>
+        <!-- Text colors -->
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="android:textColorSecondary">@color/coffee_light</item>
+    </style>
+</resources> 
