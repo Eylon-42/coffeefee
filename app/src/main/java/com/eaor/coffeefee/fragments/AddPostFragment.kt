@@ -29,9 +29,11 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
-
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 class AddPostFragment : Fragment() {
-
+    private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
     private lateinit var bottomNav: View
     private var selectedLocation: LatLng? = null
     private val selectedImages = mutableListOf<Uri>()
@@ -53,7 +55,7 @@ class AddPostFragment : Fragment() {
                     val place = Autocomplete.getPlaceFromIntent(intent)
                     Log.d("AddPostFragment", "Place: ${place.name}, ${place.id}")
                     selectedLocation = place.latLng
-                    view?.findViewById<TextView>(R.id.selectedLocationText)?.text = 
+                    view?.findViewById<TextView>(R.id.selectedLocationText)?.text =
                         place.name.toString()
                 }
             } else if (result.resultCode == Activity.RESULT_CANCELED) {
@@ -67,6 +69,7 @@ class AddPostFragment : Fragment() {
         // Initialize Places Client
         placesClient = Places.createClient(requireContext())
 
+        // Handle Bottom Navigation visibility
         bottomNav = requireActivity().findViewById(R.id.bottom_nav)
         bottomNav.visibility = View.GONE
 
@@ -131,30 +134,68 @@ class AddPostFragment : Fragment() {
     }
 
     private fun setupPostButton(view: View) {
+        // Initialize Firebase
+        auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
+
         view.findViewById<Button>(R.id.postButton).setOnClickListener {
-            val experienceDescription = view.findViewById<EditText>(R.id.experienceDescription).text.toString()
-            
-            Log.d("AddPostFragment", "User experience: $experienceDescription")
-            
-            // Navigate back or show a success message
-            findNavController().navigateUp()
+            // Check if fragment is attached before interacting with context
+            if (isAdded) {
+                val experienceDescription = view.findViewById<EditText>(R.id.experienceDescription).text.toString()
+                val currentUser = auth.currentUser
+                val UserId = currentUser?.uid
+
+                if (experienceDescription.isEmpty()) {
+                    Toast.makeText(requireContext(), "Please enter a description", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (selectedLocation == null) {
+                    Toast.makeText(requireContext(), "Please select a location", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                db.collection("Posts")
+                    .add(mapOf(
+                        "UserId" to UserId,
+                        "experienceDescription" to experienceDescription,
+                        "location" to mapOf(
+                            "name" to view.findViewById<TextView>(R.id.selectedLocationText).text.toString(),
+                            "latitude" to selectedLocation?.latitude,
+                            "longitude" to selectedLocation?.longitude
+                        ),
+                        "timestamp" to System.currentTimeMillis()
+                    ))
+                    .addOnSuccessListener {
+                        Log.d("AddPostFragment", "Post added with ID: ${it.id}")
+                        Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
+                    }
+                    .addOnFailureListener { exception ->
+                        Log.e("AddPostFragment", "Error adding post: ${exception.message}")
+                    }
+
+                // Navigate back or show a success message
+                findNavController().navigateUp()
+            }
         }
     }
 
     private fun launchPlacePicker() {
-        try {
-            val fields = listOf(
-                Place.Field.ID,
-                Place.Field.NAME,
-                Place.Field.LAT_LNG,
-                Place.Field.ADDRESS
-            )
-            val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
-                .build(requireActivity())
-            startAutocomplete.launch(intent)
-        } catch (e: Exception) {
-            Log.e("AddPostFragment", "Error launching place picker: ${e.message}")
-            Toast.makeText(requireContext(), "Error launching place picker", Toast.LENGTH_SHORT).show()
+        // Check if fragment is attached
+        if (isAdded) {
+            try {
+                val fields = listOf(
+                    Place.Field.ID,
+                    Place.Field.NAME,
+                    Place.Field.LAT_LNG,
+                    Place.Field.ADDRESS
+                )
+                val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
+                    .build(requireActivity())
+                startAutocomplete.launch(intent)
+            } catch (e: Exception) {
+                Log.e("AddPostFragment", "Error launching place picker: ${e.message}")
+                Toast.makeText(requireContext(), "Error launching place picker", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -204,6 +245,7 @@ class AddPostFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // Restore the visibility of the bottom navigation bar when the fragment is destroyed
         bottomNav.visibility = View.VISIBLE
     }
 }
