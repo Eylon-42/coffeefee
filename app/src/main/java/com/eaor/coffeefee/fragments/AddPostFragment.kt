@@ -167,14 +167,17 @@ class AddPostFragment : Fragment() {
                     ))
                     .addOnSuccessListener {
                         Log.d("AddPostFragment", "Post added with ID: ${it.id}")
-                        Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
+                        if (isAdded) {
+                            Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
+                            findNavController().navigateUp()
+                        }
                     }
                     .addOnFailureListener { exception ->
                         Log.e("AddPostFragment", "Error adding post: ${exception.message}")
+                        if (isAdded) {
+                            Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
+                        }
                     }
-
-                // Navigate back or show a success message
-                findNavController().navigateUp()
             }
         }
     }

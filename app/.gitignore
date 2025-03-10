@@ -1,2 +1,4 @@
 /build
 google-services.json
+src/main/res/values/maps_api_key.xml
+src/main/assets/coffefee_storage_credentials.json
