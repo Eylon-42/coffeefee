@@ -47,6 +47,8 @@ class AddPostFragment : Fragment() {
     // Image picker result launcher
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
+            // Clear any previously selected images and add the new one
+            selectedImages.clear()
             selectedImages.add(it)
             updateImagesRecyclerView()
         }
@@ -140,9 +142,11 @@ class AddPostFragment : Fragment() {
         recyclerView.visibility = View.GONE
 
         view.findViewById<Button>(R.id.addImageButton).setOnClickListener {
+            // Allow the user to pick only one image
             getContent.launch("image/*")
         }
     }
+
 
     private fun updateImagesRecyclerView() {
         imageAdapter.notifyDataSetChanged()
@@ -178,7 +182,7 @@ class AddPostFragment : Fragment() {
 
                 // If an image is selected, upload it
                 if (selectedImages.isNotEmpty()) {
-                    val imageUri = selectedImages[0] // Assuming one image is selected for now
+                    val imageUri = selectedImages[0] // Only one image can be in the list
                     uploadImageToStorage(imageUri,
                         onSuccess = { imageUrl ->
                             // Now post the post with the image URL
