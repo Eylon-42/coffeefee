@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
+    <!-- Include the custom toolbar -->
     <include
         android:id="@+id/toolbar"
         layout="@layout/custom_toolbar"
@@ -15,18 +15,21 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- ScrollView to handle vertical scrolling for form content -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintBottom_toBottomOf="parent">
 
+        <!-- LinearLayout inside the ScrollView to hold form content -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- TextView to display current location -->
             <TextView
                 android:id="@+id/currentLocationText"
                 android:layout_width="match_parent"
@@ -34,24 +37,29 @@
                 android:text="Current Location: Not set"
                 android:layout_marginTop="8dp" />
 
+            <!-- Button to change location -->
             <Button
                 android:id="@+id/changeLocationButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Change Location" />
-            
+
+            <!-- TextView to label the image section -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Images"
                 android:layout_marginTop="16dp" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/imagesRecyclerView"
+            <!-- RecyclerView to display selected images -->
+
+            <ImageView
+                android:id="@+id/imageView"
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
                 android:layout_marginTop="8dp" />
 
+            <!-- Button to add images -->
             <Button
                 android:id="@+id/addImageButton"
                 android:layout_width="wrap_content"
@@ -59,6 +67,7 @@
                 android:layout_marginTop="8dp"
                 android:text="Add Image" />
 
+            <!-- EditText for user to enter the review or experience -->
             <EditText
                 android:id="@+id/postReviewText"
                 android:layout_width="match_parent"
@@ -70,6 +79,7 @@
                 android:gravity="top"
                 android:padding="12dp" />
 
+            <!-- Button to save the post after editing -->
             <Button
                 android:id="@+id/savePostButton"
                 android:layout_width="wrap_content"

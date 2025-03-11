@@ -70,6 +70,7 @@
         app:layout_constraintTop_toBottomOf="@id/userInfoLayout"
         app:layout_constraintStart_toStartOf="parent"/>
 
+    <!-- RecyclerView for posts -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/postsRecyclerView"
         android:layout_width="match_parent"
@@ -77,5 +78,20 @@
         android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/postsTitle"
         app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <!-- No posts available message -->
+    <TextView
+        android:id="@+id/noPostsMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No posts available"
+        android:textSize="16sp"
+        android:textColor="@android:color/darker_gray"
+        android:layout_centerInParent="true"
+        android:visibility="gone"
+    android:layout_marginTop="20dp"
+    app:layout_constraintTop_toBottomOf="@id/postsTitle"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
