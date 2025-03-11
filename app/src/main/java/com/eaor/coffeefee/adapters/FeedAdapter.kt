@@ -12,9 +12,8 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.FeedItem
 import com.squareup.picasso.Picasso
 
-
 class FeedAdapter(
-    private val feedItems: List<FeedItem>,
+    private var feedItems: MutableList<FeedItem>, // Make feedItems mutable
     private val onMoreInfoClick: (FeedItem) -> Unit,
     private val onCommentClick: (FeedItem) -> Unit,
     private val showOptionsMenu: Boolean
@@ -25,6 +24,13 @@ class FeedAdapter(
 
     fun setPostOptionsClickListener(listener: (View, Int) -> Unit) {
         postOptionsClickListener = listener
+    }
+
+    // Method to add new items (for incremental loading)
+    fun addItems(newItems: List<FeedItem>) {
+        val startPosition = feedItems.size
+        feedItems.addAll(newItems)  // Add new items to the list
+        notifyItemRangeInserted(startPosition, newItems.size)  // Notify the adapter of the new items
     }
 
     inner class FeedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
