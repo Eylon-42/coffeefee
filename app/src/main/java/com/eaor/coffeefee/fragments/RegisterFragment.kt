@@ -73,7 +73,8 @@ class RegisterFragment : Fragment() {
                     if (userId != null) {
                         val userData = hashMapOf(
                             "name" to name,
-                            "email" to email
+                            "email" to email,
+                            "profilePhotoUrl" to "gs://coffeefee-96efb.firebasestorage.app/Users/placehoder.jpg"
                         )
 
                         db.collection("Users")

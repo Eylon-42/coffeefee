@@ -51,15 +51,26 @@ class FeedAdapter(
             locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load user avatar (profile photo) using Picasso (or Coil, depending on your choice)
-            feedItem.userPhotoUrl?.let {
+            // Set default profile image
+            userAvatar.setImageResource(R.drawable.ic_profile)
+            
+            // Load user avatar (profile photo) using Picasso only if URL is not null or empty
+            if (!feedItem.userPhotoUrl.isNullOrEmpty()) {
                 Picasso.get()
-                    .load(it)
-                    .into(userAvatar) // Load into ImageView
+                    .load(feedItem.userPhotoUrl)
+                    .placeholder(R.drawable.ic_profile)
+                    .error(R.drawable.ic_profile)
+                    .into(userAvatar)
             }
+            
             // Load image into ImageView for the post photo using Picasso
-            feedItem.photoUrl?.let {
-                Picasso.get().load(it).into(coffeeImage) // Load post photo into ImageView
+            if (!feedItem.photoUrl.isNullOrEmpty()) {
+                Picasso.get()
+                    .load(feedItem.photoUrl)
+                    .into(coffeeImage)
+            } else {
+                // Hide the image if no URL is available
+                coffeeImage.visibility = View.GONE
             }
 
             postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
