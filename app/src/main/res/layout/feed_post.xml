@@ -44,7 +44,7 @@
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <TextView
-            android:id="@+id/userDescription"
+            android:id="@+id/locationName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
@@ -54,6 +54,7 @@
             app:layout_constraintTop_toBottomOf="@id/userName"
             app:layout_constraintEnd_toEndOf="parent"/>
 
+        <!-- ImageView to display the post photo -->
         <ImageView
             android:id="@+id/coffeeImage"
             android:layout_width="0dp"
@@ -61,7 +62,7 @@
             android:layout_marginTop="12dp"
             android:scaleType="centerCrop"
             android:background="@android:color/darker_gray"
-            app:layout_constraintTop_toBottomOf="@id/userDescription"
+            app:layout_constraintTop_toBottomOf="@id/locationName"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 

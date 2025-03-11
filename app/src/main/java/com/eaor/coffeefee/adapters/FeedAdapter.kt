@@ -1,7 +1,5 @@
 package com.eaor.coffeefee.adapters
 
-import android.content.Context
-import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,11 +7,10 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import androidx.navigation.NavController
-import androidx.navigation.Navigation
 import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.FeedItem
+import com.squareup.picasso.Picasso
 
 class FeedAdapter(
     private val feedItems: List<FeedItem>,
@@ -31,17 +28,25 @@ class FeedAdapter(
 
     inner class FeedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val userName: TextView = itemView.findViewById(R.id.userName)
-        val userDescription: TextView = itemView.findViewById(R.id.userDescription)
+        val locationName: TextView = itemView.findViewById(R.id.locationName)
         val reviewText: TextView = itemView.findViewById(R.id.reviewText)
         val moreInfoButton: TextView = itemView.findViewById(R.id.moreInfoButton)
         val likeButton: ImageView = itemView.findViewById(R.id.likeButton)
         val postOptionsButton: ImageButton = itemView.findViewById(R.id.postOptionsButton)
         val commentsButton: ImageButton = itemView.findViewById(R.id.commentsButton)
 
+        // Correct ImageView for post photo
+        val coffeeImage: ImageView = itemView.findViewById(R.id.coffeeImage) // Correct reference here
+
         fun bind(feedItem: FeedItem) {
             userName.text = feedItem.userName
-            userDescription.text = feedItem.userDescription
-            reviewText.text = feedItem.reviewText
+            locationName.text = feedItem.location.name
+            reviewText.text = feedItem.experienceDescription
+
+            // Load image into ImageView using Picasso (or Coil, depending on your choice)
+            feedItem.photoUrl?.let {
+                Picasso.get().load(it).into(coffeeImage) // Correct reference used here
+            }
 
             postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
 
@@ -89,4 +94,4 @@ class FeedAdapter(
     }
 
     override fun getItemCount() = feedItems.size
-} 
+}
