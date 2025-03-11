@@ -48,7 +48,7 @@ class FeedAdapter(
 
         fun bind(feedItem: FeedItem) {
             userName.text = feedItem.userName
-            locationName.text = feedItem.location.name
+            locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
             // Load user avatar (profile photo) using Picasso (or Coil, depending on your choice)

@@ -23,6 +23,7 @@ import com.eaor.coffeefee.adapters.FeedAdapter
 import com.eaor.coffeefee.models.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 
 class UserProfileFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -54,6 +55,7 @@ class UserProfileFragment : Fragment() {
 
         // Get current user and load their info
         val currentUser = auth.currentUser
+        var userData: MutableMap<String, Any>? = null
         if (currentUser != null) {
             // Load user's name from Firestore
             db.collection("Users")
@@ -61,6 +63,7 @@ class UserProfileFragment : Fragment() {
                 .get()
                 .addOnSuccessListener { document ->
                     if (document != null && document.exists()) {
+                        userData = document.data
                         val name = document.getString("name")
                         if (name != null) {
                             view.findViewById<TextView>(R.id.userName).text = name
@@ -89,13 +92,51 @@ class UserProfileFragment : Fragment() {
         // Fetch posts for the current user from Firestore
         if (currentUserId != null) {
             db.collection("Posts")
-                .whereEqualTo("userId", currentUserId) // Filter by current user's ID
+                .whereEqualTo("UserId", currentUserId) // Filter by current user's ID
                 .get()
                 .addOnSuccessListener { result ->
                     val userPosts = mutableListOf<FeedItem>()
-                    for (document in result) {
-                        val feedItem = document.toObject(FeedItem::class.java)
+                    for (document in result) { // Set the document ID to FeedItem
+
+                        val locationMap = document.get("location") as? Map<String, Any>
+                        val location = if (locationMap != null) {
+                            FeedItem.Location(
+                                name = locationMap["name"] as? String ?: "",
+                                latitude = (locationMap["latitude"] as? Double) ?: 0.0,
+                                longitude = (locationMap["longitude"] as? Double) ?: 0.0
+                            )
+                        } else {
+                            null // If location is not available, we set it to null
+                        }
+
+                        var feedItem = FeedItem(
+                            id = document.id,
+                            userId = document.getString("UserId") ?: "",
+                            userName = "You", // Placeholder for now, we'll update later
+                            experienceDescription = document.getString("experienceDescription") ?: "",
+                            location = location,
+                            photoUrl = document.getString("photoUrl"),
+                            timestamp = document.getLong("timestamp") ?: 0L,
+                            userPhotoUrl = userData?.get("profilePhotoUrl").toString() // Placeholder for now
+                        )
+
+                        // Fetch the download URL from Firebase Storage for the user's profile photo
+                        val storageReference = FirebaseStorage.getInstance().getReferenceFromUrl(userData?.get("profilePhotoUrl").toString() ?: "")
+                        storageReference.downloadUrl.addOnSuccessListener { uri ->
+                            // Convert gs:// URL to https:// URL
+                            feedItem.userPhotoUrl = uri.toString()
+                        }
+
                         userPosts.add(feedItem) // Add to the list of posts
+                    }
+
+                    // Check if userPosts has any data, otherwise show a message
+                    if (userPosts.isEmpty()) {
+                        // Show a message like "No posts available" here, or an empty view
+                        view.findViewById<TextView>(R.id.noPostsMessage).visibility = View.VISIBLE
+                    } else {
+                        // Hide the "No posts available" message if posts are present
+                        view.findViewById<TextView>(R.id.noPostsMessage).visibility = View.GONE
                     }
 
                     // Set up the adapter with the filtered posts
@@ -103,10 +144,11 @@ class UserProfileFragment : Fragment() {
                         userPosts,
                         onMoreInfoClick = { feedItem ->
                             val bundle = Bundle().apply {
-                                putString("name", feedItem.location.name)
-                                putString("description", feedItem.experienceDescription)
-                                putDouble("latitude", feedItem.location.latitude)
-                                putDouble("longitude", feedItem.location.longitude)
+                                putString("description", feedItem.experienceDescription ?: "Unknown Location")
+                                putString("name", feedItem.location?.name ?: "Unknown Location")
+                                putFloat("latitude", feedItem.location?.latitude?.toFloat() ?: 0f)
+                                putFloat("longitude", feedItem.location?.longitude?.toFloat() ?: 0f)
+                                putString("imageUrl", feedItem.photoUrl) // Pass the photo URL here
                             }
                             findNavController().navigate(R.id.action_userProfileFragment_to_coffeeFragment, bundle)
                         },
@@ -124,24 +166,31 @@ class UserProfileFragment : Fragment() {
                                 setOnMenuItemClickListener { item ->
                                     when (item.itemId) {
                                         R.id.action_edit_post -> {
+                                            val feedItem = userPosts[position]
                                             val bundle = Bundle().apply {
-                                                putString("postText", userPosts[position].experienceDescription)
+                                                putString("postId", feedItem.id)
+                                                putString("experienceText", feedItem.experienceDescription)  // User experience text
+                                                putDouble("latitude", feedItem.location!!.latitude)  // Location data
+                                                putDouble("longitude", feedItem.location.longitude)  // Location data
+                                                putString("name", feedItem.location.name)  // Location data
+                                                putString("imageUrl", feedItem.photoUrl)  // Image URL
                                             }
                                             findNavController().navigate(R.id.action_userProfileFragment_to_editPostFragment, bundle)
                                             true
                                         }
-                                        R.id.action_delete_post -> {
-                                            // TODO: Implement delete functionality
-                                            true
-                                        }
+                                        // Handle other actions like delete, etc.
                                         else -> false
                                     }
                                 }
                                 show()
                             }
                         }
+
                     }
+
+                    // Set the adapter only after posts are fetched
                     recyclerView.adapter = adapter
+
                 }
                 .addOnFailureListener { exception ->
                     Toast.makeText(context, "Error getting posts: ${exception.message}", Toast.LENGTH_SHORT).show()

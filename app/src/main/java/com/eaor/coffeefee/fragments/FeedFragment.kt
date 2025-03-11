@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.FeedAdapter
 import com.eaor.coffeefee.models.FeedItem
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -152,6 +153,7 @@ class FeedFragment : Fragment() {
         val updatedFeedItems = mutableListOf<FeedItem>()
         var processedCount = 0
 
+
         // Fetch user information for each post
         feedItems.forEach { feedItem ->
             val userId = feedItem.userId
@@ -221,5 +223,8 @@ class FeedFragment : Fragment() {
 
         // Set isLoading to false once we have finished loading posts
         isLoading = false
+        view?.findViewById<FloatingActionButton>(R.id.addPostFab)?.setOnClickListener {
+            findNavController().navigate(R.id.action_feedFragment_to_addPostFragment)
+        }
     }
 }
