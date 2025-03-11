@@ -18,10 +18,19 @@ import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.CoffeeShopAdapter
 import com.eaor.coffeefee.models.CoffeeShop
+import com.eaor.coffeefee.repositories.CoffeeShopRepository
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
 
 class SearchFragment : Fragment() {
     private lateinit var bottomNav: BottomNavigationView
+    private lateinit var adapter: CoffeeShopAdapter
+    private val repository = CoffeeShopRepository.getInstance()
+    private val scope = CoroutineScope(Dispatchers.Main)
     
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -45,33 +54,59 @@ class SearchFragment : Fragment() {
         val recyclerView = view.findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-        // Initialize CoffeeShopAdapter
-        val coffeeShops = listOf(
-            CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818),
-            CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345),
-            CoffeeShop("Haifa Bay Cafe", 4.4f, "Scenic coffee shop with bay views", 32.7940, 34.9896),
-            CoffeeShop("Desert Bean", 4.2f, "Cozy spot in Beer Sheva's Old City", 31.2516, 34.7913),
-            CoffeeShop("Marina Coffee", 4.6f, "Luxurious cafe by the Herzliya Marina", 32.1877, 34.8702),
-            CoffeeShop("Sarona Coffee Works", 4.7f, "Trendy cafe in Sarona Market", 32.0731, 34.7925)
-        )
-        val adapter = CoffeeShopAdapter(coffeeShops)
+        // Initialize CoffeeShopAdapter with empty list
+        adapter = CoffeeShopAdapter(emptyList())
         recyclerView.adapter = adapter
 
-        // Initialize SearchView
-        val searchView = view.findViewById<SearchView>(R.id.searchView)
-        setupSearchView(searchView, adapter)
+        // Load initial data
+        loadCoffeeShops()
 
+        // Set up click listener
         adapter.setOnItemClickListener { coffeeShop ->
             val bundle = Bundle().apply {
                 putString("name", coffeeShop.name)
-                putString("description", "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor.")
+                putString("description", coffeeShop.caption)
                 putFloat("latitude", coffeeShop.latitude.toFloat())
                 putFloat("longitude", coffeeShop.longitude.toFloat())
+                putString("placeId", coffeeShop.placeId)
+                coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                coffeeShop.rating?.let { putFloat("rating", it) }
+                coffeeShop.address?.let { putString("address", it) }
             }
             findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
         }
 
+        // Initialize SearchView
+        val searchView = view.findViewById<SearchView>(R.id.searchView)
+        setupSearchView(searchView)
+
         return view
+    }
+
+    private fun loadCoffeeShops() {
+        scope.launch {
+            repository.getAllCoffeeShops().collectLatest { coffeeShops ->
+                withContext(Dispatchers.Main) {
+                    adapter = CoffeeShopAdapter(coffeeShops)
+                    view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+                    
+                    // Set up click listener again for the new adapter
+                    adapter.setOnItemClickListener { coffeeShop ->
+                        val bundle = Bundle().apply {
+                            putString("name", coffeeShop.name)
+                            putString("description", coffeeShop.caption)
+                            putFloat("latitude", coffeeShop.latitude.toFloat())
+                            putFloat("longitude", coffeeShop.longitude.toFloat())
+                            putString("placeId", coffeeShop.placeId)
+                            coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                            coffeeShop.rating?.let { putFloat("rating", it) }
+                            coffeeShop.address?.let { putString("address", it) }
+                        }
+                        findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+                    }
+                }
+            }
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -116,19 +151,42 @@ class SearchFragment : Fragment() {
         bottomNav.visibility = View.VISIBLE
     }
 
-    private fun setupSearchView(searchView: SearchView, adapter: CoffeeShopAdapter) {
+    private fun setupSearchView(searchView: SearchView) {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
-                // Hide keyboard on submit
-                val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.hideSoftInputFromWindow(searchView.windowToken, 0)
+                query?.let { searchCoffeeShops(it) }
                 return true
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                adapter.filter(newText.orEmpty())
+                newText?.let { searchCoffeeShops(it) }
                 return true
             }
         })
+    }
+
+    private fun searchCoffeeShops(query: String) {
+        scope.launch {
+            val results = repository.searchCoffeeShops(query)
+            withContext(Dispatchers.Main) {
+                adapter = CoffeeShopAdapter(results)
+                view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+                
+                // Set up click listener for the new adapter
+                adapter.setOnItemClickListener { coffeeShop ->
+                    val bundle = Bundle().apply {
+                        putString("name", coffeeShop.name)
+                        putString("description", coffeeShop.caption)
+                        putFloat("latitude", coffeeShop.latitude.toFloat())
+                        putFloat("longitude", coffeeShop.longitude.toFloat())
+                        putString("placeId", coffeeShop.placeId)
+                        coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                        coffeeShop.rating?.let { putFloat("rating", it) }
+                        coffeeShop.address?.let { putString("address", it) }
+                    }
+                    findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+                }
+            }
+        }
     }
 }
