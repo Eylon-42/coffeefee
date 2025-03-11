@@ -12,6 +12,7 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.FeedItem
 import com.squareup.picasso.Picasso
 
+
 class FeedAdapter(
     private val feedItems: List<FeedItem>,
     private val onMoreInfoClick: (FeedItem) -> Unit,
@@ -27,6 +28,7 @@ class FeedAdapter(
     }
 
     inner class FeedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val userAvatar: ImageView = itemView.findViewById(R.id.userAvatar) // ImageView for the user's profile photo
         val userName: TextView = itemView.findViewById(R.id.userName)
         val locationName: TextView = itemView.findViewById(R.id.locationName)
         val reviewText: TextView = itemView.findViewById(R.id.reviewText)
@@ -36,16 +38,22 @@ class FeedAdapter(
         val commentsButton: ImageButton = itemView.findViewById(R.id.commentsButton)
 
         // Correct ImageView for post photo
-        val coffeeImage: ImageView = itemView.findViewById(R.id.coffeeImage) // Correct reference here
+        val coffeeImage: ImageView = itemView.findViewById(R.id.coffeeImage)
 
         fun bind(feedItem: FeedItem) {
             userName.text = feedItem.userName
             locationName.text = feedItem.location.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load image into ImageView using Picasso (or Coil, depending on your choice)
+            // Load user avatar (profile photo) using Picasso (or Coil, depending on your choice)
+            feedItem.userPhotoUrl?.let {
+                Picasso.get()
+                    .load(it)
+                    .into(userAvatar) // Load into ImageView
+            }
+            // Load image into ImageView for the post photo using Picasso
             feedItem.photoUrl?.let {
-                Picasso.get().load(it).into(coffeeImage) // Correct reference used here
+                Picasso.get().load(it).into(coffeeImage) // Load post photo into ImageView
             }
 
             postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
