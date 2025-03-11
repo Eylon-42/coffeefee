@@ -28,33 +28,15 @@
         app:layout_constraintStart_toStartOf="parent">
 
         <ImageView
-            android:id="@+id/star1"
+            android:id="@+id/heart1"
             android:layout_width="16dp"
             android:layout_height="16dp"
-            android:src="@drawable/ic_heart_filled"
+            android:src="@drawable/ic_heart_outline"
             app:tint="@color/coffee_primary"
             android:contentDescription="@string/rating_icon"/>
 
         <ImageView
-            android:id="@+id/star2"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_heart_filled"
-            app:tint="@color/coffee_primary"
-            android:contentDescription="@string/rating_icon"
-            android:layout_marginStart="2dp"/>
-
-        <ImageView
-            android:id="@+id/star3"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_heart_filled"
-            app:tint="@color/coffee_primary"
-            android:contentDescription="@string/rating_icon"
-            android:layout_marginStart="2dp"/>
-
-        <ImageView
-            android:id="@+id/star4"
+            android:id="@+id/heart2"
             android:layout_width="16dp"
             android:layout_height="16dp"
             android:src="@drawable/ic_heart_outline"
@@ -63,7 +45,25 @@
             android:layout_marginStart="2dp"/>
 
         <ImageView
-            android:id="@+id/star5"
+            android:id="@+id/heart3"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_heart_outline"
+            app:tint="@color/coffee_primary"
+            android:contentDescription="@string/rating_icon"
+            android:layout_marginStart="2dp"/>
+
+        <ImageView
+            android:id="@+id/heart4"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_heart_outline"
+            app:tint="@color/coffee_primary"
+            android:contentDescription="@string/rating_icon"
+            android:layout_marginStart="2dp"/>
+
+        <ImageView
+            android:id="@+id/heart5"
             android:layout_width="16dp"
             android:layout_height="16dp"
             android:src="@drawable/ic_heart_outline"

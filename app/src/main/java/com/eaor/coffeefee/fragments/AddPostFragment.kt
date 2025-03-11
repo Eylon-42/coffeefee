@@ -29,6 +29,7 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
+import com.google.firebase.firestore.FirebaseFirestore
 
 class AddPostFragment : Fragment() {
 
@@ -37,6 +38,13 @@ class AddPostFragment : Fragment() {
     private val selectedImages = mutableListOf<Uri>()
     private lateinit var imageAdapter: ImageAdapter
     private lateinit var placesClient: PlacesClient
+    private var selectedPlaceName: String? = null
+    private var selectedPlaceId: String? = null
+    private var selectedPlaceRating: Float? = null
+    private var selectedPlacePhotoUrl: String? = null
+    private var selectedPlaceDescription: String? = null
+    private var selectedPlaceAddress: String? = null
+    private lateinit var db: FirebaseFirestore
 
     // Image picker result launcher
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -53,8 +61,13 @@ class AddPostFragment : Fragment() {
                     val place = Autocomplete.getPlaceFromIntent(intent)
                     Log.d("AddPostFragment", "Place: ${place.name}, ${place.id}")
                     selectedLocation = place.latLng
+                    selectedPlaceName = place.name
+                    selectedPlaceId = place.id
                     view?.findViewById<TextView>(R.id.selectedLocationText)?.text = 
                         place.name.toString()
+                    
+                    // Fetch place details to get rating and photo
+                    fetchPlaceDetails(place.id)
                 }
             } else if (result.resultCode == Activity.RESULT_CANCELED) {
                 Log.d("AddPostFragment", "User canceled autocomplete")
@@ -63,6 +76,9 @@ class AddPostFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val view = inflater.inflate(R.layout.fragment_add_post, container, false)
+
+        // Initialize Firebase
+        db = FirebaseFirestore.getInstance()
 
         // Initialize Places Client
         placesClient = Places.createClient(requireContext())
@@ -132,12 +148,35 @@ class AddPostFragment : Fragment() {
 
     private fun setupPostButton(view: View) {
         view.findViewById<Button>(R.id.postButton).setOnClickListener {
-            val experienceDescription = view.findViewById<EditText>(R.id.experienceDescription).text.toString()
-            
-            Log.d("AddPostFragment", "User experience: $experienceDescription")
-            
-            // Navigate back or show a success message
-            findNavController().navigateUp()
+            if (selectedLocation == null || selectedPlaceName == null) {
+                Toast.makeText(requireContext(), "Please select a coffee shop location", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // Create coffee shop data
+            val coffeeShopData = hashMapOf(
+                "name" to selectedPlaceName,
+                "rating" to selectedPlaceRating,
+                "caption" to (selectedPlaceDescription ?: ""),
+                "latitude" to selectedLocation!!.latitude,
+                "longitude" to selectedLocation!!.longitude,
+                "placeId" to selectedPlaceId,
+                "photoUrl" to selectedPlacePhotoUrl,
+                "address" to (selectedPlaceAddress ?: "")
+            )
+
+            // Add to Firestore
+            db.collection("CoffeeShops")
+                .document(selectedPlaceId!!)
+                .set(coffeeShopData)
+                .addOnSuccessListener {
+                    Log.d("AddPostFragment", "Coffee shop added successfully")
+                    findNavController().navigateUp()
+                }
+                .addOnFailureListener { e ->
+                    Log.e("AddPostFragment", "Error adding coffee shop", e)
+                    Toast.makeText(requireContext(), "Failed to add coffee shop: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
         }
     }
 
@@ -147,7 +186,10 @@ class AddPostFragment : Fragment() {
                 Place.Field.ID,
                 Place.Field.NAME,
                 Place.Field.LAT_LNG,
-                Place.Field.ADDRESS
+                Place.Field.ADDRESS,
+                Place.Field.RATING,
+                Place.Field.PHOTO_METADATAS,
+                Place.Field.EDITORIAL_SUMMARY
             )
             val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
                 .build(requireActivity())
@@ -195,6 +237,65 @@ class AddPostFragment : Fragment() {
             }
             .addOnFailureListener { exception ->
                 Log.e("AddPostFragment", "Error fetching predictions: ${exception.message}")
+            }
+    }
+
+    private fun fetchPlaceDetails(placeId: String) {
+        val fields = listOf(
+            Place.Field.RATING,
+            Place.Field.PHOTO_METADATAS,
+            Place.Field.EDITORIAL_SUMMARY,
+            Place.Field.ADDRESS
+        )
+        
+        // First check if we have the coffee shop data in Firestore
+        db.collection("CoffeeShops")
+            .document(placeId)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    // Use existing data
+                    selectedPlaceRating = document.getDouble("rating")?.toFloat()
+                    selectedPlacePhotoUrl = document.getString("photoUrl")
+                    selectedPlaceDescription = document.getString("caption")
+                    selectedPlaceAddress = document.getString("address")
+                    Log.d("AddPostFragment", "Using existing coffee shop data")
+                } else {
+                    // Fetch from Places API if not in Firestore
+                    placesClient.fetchPlace(
+                        com.google.android.libraries.places.api.net.FetchPlaceRequest.newInstance(placeId, fields)
+                    ).addOnSuccessListener { response ->
+                        val place = response.place
+                        selectedPlaceRating = place.rating?.toFloat()
+                        selectedPlaceAddress = place.address
+                        
+                        // Get the editorial summary or use default description
+                        selectedPlaceDescription = place.editorialSummary?.toString()
+                            ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"
+                        
+                        // Get the photo URL if available
+                        selectedPlacePhotoUrl = place.photoMetadatas?.firstOrNull()?.let {
+                            "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${it.zza()}&key=${BuildConfig.GOOGLE_MAPS_API_KEY}"
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("AddPostFragment", "Error checking for existing coffee shop", e)
+                // Fallback to Places API
+                placesClient.fetchPlace(
+                    com.google.android.libraries.places.api.net.FetchPlaceRequest.newInstance(placeId, fields)
+                ).addOnSuccessListener { response ->
+                    val place = response.place
+                    selectedPlaceRating = place.rating?.toFloat()
+                    selectedPlaceAddress = place.address
+                    selectedPlaceDescription = place.editorialSummary?.toString()
+                        ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"
+                    
+                    selectedPlacePhotoUrl = place.photoMetadatas?.firstOrNull()?.let {
+                        "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${it.zza()}&key=${BuildConfig.GOOGLE_MAPS_API_KEY}"
+                    }
+                }
             }
     }
 

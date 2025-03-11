@@ -77,6 +77,10 @@ class FeedFragment : Fragment() {
                     putString("description", feedItem.coffeeShop.caption)
                     putFloat("latitude", feedItem.coffeeShop.latitude.toFloat())
                     putFloat("longitude", feedItem.coffeeShop.longitude.toFloat())
+                    feedItem.coffeeShop.placeId?.let { putString("placeId", it) }
+                    feedItem.coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                    feedItem.coffeeShop.rating?.let { putFloat("rating", it) }
+                    feedItem.coffeeShop.address?.let { putString("address", it) }
                 }
                 findNavController().navigate(R.id.action_feedFragment_to_coffeeFragment, bundle)
             },

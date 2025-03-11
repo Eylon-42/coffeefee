@@ -21,6 +21,7 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.CoffeeShop
+import com.eaor.coffeefee.repositories.CoffeeShopRepository
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -31,9 +32,15 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import java.util.Locale
+import kotlinx.coroutines.flow.collectLatest
 
-class CoffeeMapFragment : Fragment(), OnMapReadyCallback {
+class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var googleMap: GoogleMap
@@ -43,29 +50,21 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback {
     private lateinit var descriptionTextView: TextView
     private lateinit var locationAddressTextView: TextView
     private lateinit var openInMapsButton: Button
-
-    // Create a mutable list to hold markers
-    private val markers = mutableListOf<Marker>()
+    private val repository = CoffeeShopRepository.getInstance()
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private val markers = mutableMapOf<String, CoffeeShop>()
+    private var selectedCoffeeShop: CoffeeShop? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         when {
-            permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true -> {
-                // Precise location access granted
-                enableMyLocation()
-            }
+            permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true -> {
-                // Only approximate location access granted
                 enableMyLocation()
             }
             else -> {
-                // No location access granted
-                Toast.makeText(
-                    requireContext(),
-                    "Location permission is required to show your location",
-                    Toast.LENGTH_SHORT
-                ).show()
+                handleNoLocationPermission()
             }
         }
     }
@@ -76,8 +75,6 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback {
         savedInstanceState: Bundle?
     ): View? {
         val rootView = inflater.inflate(R.layout.fragment_coffee_map, container, false)
-
-        // Initialize location services
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
 
         // Initialize views
@@ -108,149 +105,173 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback {
         return rootView
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        // Get selected coffee shop from arguments if available
+        arguments?.let { args ->
+            val placeId = args.getString("placeId")
+            val name = args.getString("name")
+            val photoUrl = args.getString("photoUrl")
+            val rating = if (args.containsKey("rating")) args.getFloat("rating") else null
+            
+            if (placeId != null && name != null) {
+                selectedCoffeeShop = CoffeeShop(
+                    name = name,
+                    rating = rating,
+                    caption = "",  // Not needed for map
+                    latitude = 0.0,  // Will be updated from repository
+                    longitude = 0.0,  // Will be updated from repository
+                    placeId = placeId,
+                    photoUrl = photoUrl
+                )
+            }
+        }
+    }
+
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
+        googleMap.setOnMarkerClickListener(this)
         
         // Enable zoom controls and my location button
-        map.uiSettings.isZoomControlsEnabled = true
-        map.uiSettings.isMyLocationButtonEnabled = true
-        // Always enable the My Location button
-        googleMap.isMyLocationEnabled = true
-        
-        // Add coffee shop markers
-        googleMap.clear()
-        addCoffeeShopMarkers()
-        
-        // Check location permissions and handle accordingly
-        checkLocationPermission { permissionsGranted ->
-            if (permissionsGranted) {
-                handleMapCameraPosition()
-            } else {
-                Toast.makeText(
-                    requireContext(),
-                    "Location permission is required to show your location",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
+        googleMap.uiSettings.isZoomControlsEnabled = true
+        googleMap.uiSettings.isMyLocationButtonEnabled = true
 
-        googleMap.setOnMarkerClickListener { clickedMarker ->
-            val coffeeShop = clickedMarker.tag as? CoffeeShop
-            coffeeShop?.let {
-                // Populate the overlay with data
-                locationNameTextView.text = it.name
-                descriptionTextView.text = it.caption
-                locationAddressTextView.text = it.address ?: "Address not found"
-
-                // Show the overlay
-                descriptionOverlay.visibility = View.VISIBLE
-
-                // Show the info window for the clicked marker
-                clickedMarker.showInfoWindow()
-            }
-            true
-        }
-
-        // Hide overlay when the map is clicked
+        // Add map click listener to hide description overlay
         googleMap.setOnMapClickListener {
             descriptionOverlay.visibility = View.GONE
         }
+
+        // Check location permission
+        if (ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            googleMap.isMyLocationEnabled = true
+        }
+
+        // Load all coffee shops
+        loadCoffeeShops()
     }
 
-    private fun addCoffeeShopMarkers() {
-        coffeeShops = listOf(
-            CoffeeShop("Cafe Dizengoff", 4.5f, "Modern cafe in the heart of Tel Aviv", 32.0853, 34.7818),
-            CoffeeShop("Jerusalem Coffee House", 4.3f, "Traditional cafe near Mahane Yehuda", 31.7767, 35.2345),
-            CoffeeShop("Haifa Bay Cafe", 4.4f, "Scenic coffee shop with bay views", 32.7940, 34.9896),
-            CoffeeShop("Desert Bean", 4.2f, "Cozy spot in Beer Sheva's Old City", 31.2516, 34.7913),
-            CoffeeShop("Marina Coffee", 4.6f, "Luxurious cafe by the Herzliya Marina", 32.1877, 34.8702),
-            CoffeeShop("Sarona Coffee Works", 4.7f, "Trendy cafe in Sarona Market", 32.0731, 34.7925)
-        )
-
-        val geocoder = Geocoder(requireContext(), Locale.getDefault())
-
-        for (shop in coffeeShops) {
-            val location = LatLng(shop.latitude, shop.longitude)
-            val marker = googleMap.addMarker(
-                MarkerOptions()
-                    .position(location)
-                    .title(shop.name)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
-            )
-            marker?.tag = shop
-            marker?.let { markers.add(it) } // Add marker to the list
-
-            // Fetch the address
+    private fun loadCoffeeShops() {
+        scope.launch {
             try {
-                val addresses = geocoder.getFromLocation(shop.latitude, shop.longitude, 1)
-                if (addresses != null && addresses.isNotEmpty()) {
-                    shop.address = addresses[0]?.getAddressLine(0) // Get the full address
+                repository.getAllCoffeeShops().collectLatest { coffeeShops ->
+                    // Clear existing markers
+                    googleMap.clear()
+                    markers.clear()
+
+                    // Add markers for all coffee shops
+                    coffeeShops.forEach { shop ->
+                        val position = LatLng(shop.latitude, shop.longitude)
+                        val marker = googleMap.addMarker(
+                            MarkerOptions()
+                                .position(position)
+                                .title(shop.name)
+                        )
+                        marker?.let { markers[it.id] = shop }
+
+                        // If this is the selected coffee shop, zoom to it and show overlay
+                        if (shop.placeId == selectedCoffeeShop?.placeId) {
+                            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(position, 15f))
+                            marker?.showInfoWindow()
+                            
+                            // Update and show the description overlay
+                            locationNameTextView.text = shop.name
+                            descriptionTextView.text = shop.caption
+                            locationAddressTextView.text = shop.address ?: "Address not available"
+                            descriptionOverlay.visibility = View.VISIBLE
+                        }
+                    }
+
+                    // If no specific shop is selected, get current location
+                    if (selectedCoffeeShop == null) {
+                        if (hasLocationPermissions()) {
+                            try {
+                                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                                    location?.let {
+                                        val currentLocation = LatLng(it.latitude, it.longitude)
+                                        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15f))
+                                    } ?: run {
+                                        // If location is null, show all markers
+                                        showAllMarkers(coffeeShops)
+                                    }
+                                }
+                            } catch (e: SecurityException) {
+                                Log.e("CoffeeMapFragment", "Error getting location", e)
+                                showAllMarkers(coffeeShops)
+                            }
+                        } else {
+                            checkLocationPermission()
+                            showAllMarkers(coffeeShops)
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("CoffeeMapFragment", "Error loading coffee shops", e)
             }
         }
-
-        // Move camera to the first coffee shop
-        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(coffeeShops[0].latitude, coffeeShops[0].longitude), 12f))
     }
 
-    private fun checkLocationPermission(callback: (Boolean) -> Unit) {
+    private fun showAllMarkers(coffeeShops: List<CoffeeShop>) {
+        if (coffeeShops.isNotEmpty()) {
+            val builder = com.google.android.gms.maps.model.LatLngBounds.Builder()
+            coffeeShops.forEach { shop ->
+                builder.include(LatLng(shop.latitude, shop.longitude))
+            }
+            val bounds = builder.build()
+            val padding = 100 // offset from edges of the map in pixels
+            val cameraUpdate = CameraUpdateFactory.newLatLngBounds(bounds, padding)
+            googleMap.moveCamera(cameraUpdate)
+        }
+    }
+
+    override fun onMarkerClick(marker: Marker): Boolean {
+        // Show info window
+        marker.showInfoWindow()
+        
+        // Get the coffee shop associated with this marker
+        val coffeeShop = markers[marker.id]
+        if (coffeeShop != null) {
+            // Zoom to the marker
+            googleMap.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(marker.position, 15f)
+            )
+
+            // Update and show the description overlay
+            locationNameTextView.text = coffeeShop.name
+            descriptionTextView.text = coffeeShop.caption
+            locationAddressTextView.text = coffeeShop.address ?: "Address not available"
+            descriptionOverlay.visibility = View.VISIBLE
+        }
+        
+        return true
+    }
+
+    private fun checkLocationPermission() {
         when {
             hasLocationPermissions() -> {
-                callback(true)
-            }
-            shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) -> {
-                // Show rationale and request permission
-                Toast.makeText(
-                    requireContext(),
-                    "Location permission is needed to show your location",
-                    Toast.LENGTH_SHORT
-                ).show()
-                requestLocationPermissions(callback)
-            }
-            else -> {
-                requestLocationPermissions(callback)
-            }
-        }
-    }
-
-    private fun requestLocationPermissions(callback: (Boolean) -> Unit) {
-        requestPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        )
-    }
-
-    private fun handleMapCameraPosition() {
-        arguments?.let { args ->
-            val coffeeShopName = args.getString("name", "") // Get the coffee shop name
-            
-            if (coffeeShopName.isNotEmpty()) {
-                val coffeeShop = coffeeShops.find { it.name == coffeeShopName }
-
-                coffeeShop?.let {
-                    val selectedLatLng = LatLng(it.latitude, it.longitude)
-                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(selectedLatLng, 12f))
-
-                    // Populate the overlay with data
-                    locationNameTextView.text = it.name
-                    descriptionTextView.text = it.caption
-                    locationAddressTextView.text = it.address ?: "Address not found"
-                    
-                    // Show the overlay
-                    descriptionOverlay.visibility = View.VISIBLE
-
-                    // Show the info window for the corresponding marker
-                    markers.find { marker -> marker.tag == it }?.showInfoWindow()
-                }
-            } else {
                 enableMyLocation()
             }
-        } ?: run {
-            enableMyLocation()
+            shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) -> {
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("Location Permission Needed")
+                    .setMessage("This app needs location permission to show your position on the map and find coffee shops near you.")
+                    .setPositiveButton("OK") { _, _ ->
+                        requestLocationPermissions()
+                    }
+                    .setNegativeButton("Cancel") { dialog, _ ->
+                        dialog.dismiss()
+                        handleNoLocationPermission()
+                    }
+                    .create()
+                    .show()
+            }
+            else -> {
+                requestLocationPermissions()
+            }
         }
     }
 
@@ -265,31 +286,52 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun requestLocationPermissions() {
+        requestPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
     private fun enableMyLocation() {
-        try {
-            // Get last known location and move camera
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                location?.let {
-                    val userLatLng = LatLng(it.latitude, it.longitude)
-                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 12f))
-                }
+        if (hasLocationPermissions()) {
+            try {
+                googleMap.isMyLocationEnabled = true
+                requestLocationUpdate()
+            } catch (e: SecurityException) {
+                Log.e("CoffeeMapFragment", "Error enabling location", e)
             }
-        } catch (e: SecurityException) {
-            // Handle the case where permission is not granted
-            Toast.makeText(
-                requireContext(),
-                "Location permission is required to show your location",
-                Toast.LENGTH_SHORT
-            ).show()
         }
     }
 
+    private fun handleNoLocationPermission() {
+        Toast.makeText(
+            requireContext(),
+            "Location permission not granted. Some features may be limited.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun requestLocationUpdate() {
+        Toast.makeText(
+            requireContext(),
+            "Waiting for location...",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     private fun openLocationInMaps() {
-        val coffeeShop = coffeeShops.find { it.name == locationNameTextView.text }
-        coffeeShop?.let {
-            val uri = "geo:${it.latitude},${it.longitude}?q=${it.latitude},${it.longitude}(${it.name})"
+        val name = locationNameTextView.text.toString()
+        val coffeeShop = markers.values.find { it.name == name }
+        
+        if (coffeeShop != null) {
+            val uri = "geo:${coffeeShop.latitude},${coffeeShop.longitude}?q=${coffeeShop.latitude},${coffeeShop.longitude}($name)"
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
             startActivity(intent)
+        } else {
+            Toast.makeText(requireContext(), "Could not find location coordinates", Toast.LENGTH_SHORT).show()
         }
     }
 }
