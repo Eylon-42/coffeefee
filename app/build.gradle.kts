@@ -1,5 +1,5 @@
-import java.io.FileInputStream
 import java.util.Properties
+import java.io.FileInputStream
 
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.recyclerview)
+    implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.storage.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
