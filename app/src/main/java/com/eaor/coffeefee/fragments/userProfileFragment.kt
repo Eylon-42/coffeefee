@@ -109,7 +109,7 @@ class UserProfileFragment : Fragment() {
                             null // If location is not available, we set it to null
                         }
 
-                        var feedItem = FeedItem(
+                        var tepItem = FeedItem(
                             id = document.id,
                             userId = document.getString("UserId") ?: "",
                             userName = "You", // Placeholder for now, we'll update later
@@ -124,10 +124,9 @@ class UserProfileFragment : Fragment() {
                         val storageReference = FirebaseStorage.getInstance().getReferenceFromUrl(userData?.get("profilePhotoUrl").toString() ?: "")
                         storageReference.downloadUrl.addOnSuccessListener { uri ->
                             // Convert gs:// URL to https:// URL
-                            feedItem.userPhotoUrl = uri.toString()
-                        }
-
-                        userPosts.add(feedItem) // Add to the list of posts
+                            tepItem.userPhotoUrl = uri.toString()
+                            }
+                        userPosts.add(tepItem) // Add to the list of posts
                     }
 
                     // Check if userPosts has any data, otherwise show a message
@@ -166,26 +165,33 @@ class UserProfileFragment : Fragment() {
                                 setOnMenuItemClickListener { item ->
                                     when (item.itemId) {
                                         R.id.action_edit_post -> {
-                                            val feedItem = userPosts[position]
                                             val bundle = Bundle().apply {
-                                                putString("postId", feedItem.id)
-                                                putString("experienceText", feedItem.experienceDescription)  // User experience text
-                                                putDouble("latitude", feedItem.location!!.latitude)  // Location data
-                                                putDouble("longitude", feedItem.location.longitude)  // Location data
-                                                putString("name", feedItem.location.name)  // Location data
-                                                putString("imageUrl", feedItem.photoUrl)  // Image URL
+                                                putString("postText", userPosts[position].experienceDescription)
                                             }
                                             findNavController().navigate(R.id.action_userProfileFragment_to_editPostFragment, bundle)
                                             true
                                         }
-                                        // Handle other actions like delete, etc.
+                                        R.id.action_delete_post -> {
+                                            // Delete the post from Firestore
+                                            val postId = userPosts[position].id
+                                            db.collection("Posts").document(postId)
+                                                .delete()
+                                                .addOnSuccessListener {
+                                                    Toast.makeText(context, "Post deleted successfully", Toast.LENGTH_SHORT).show()
+                                                    userPosts.removeAt(position) // Remove the post from the list
+                                                    notifyItemRemoved(position) // Update the RecyclerView
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    Toast.makeText(context, "Error deleting post: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            true
+                                        }
                                         else -> false
                                     }
                                 }
                                 show()
                             }
                         }
-
                     }
 
                     // Set the adapter only after posts are fetched
