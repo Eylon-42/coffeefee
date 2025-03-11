@@ -20,6 +20,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
+    id("kotlin-kapt")
 }
 
 android {
@@ -103,6 +104,11 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.github.bumptech.glide:glide:4.12.0")
     implementation("com.squareup.picasso:picasso:2.71828")
+    val roomVersion = "2.6.1"
+
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion")
 
 
 }
