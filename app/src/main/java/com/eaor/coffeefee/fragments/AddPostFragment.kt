@@ -50,6 +50,13 @@ class AddPostFragment : Fragment() {
     private var selectedPlaceDescription: String? = null
     private var selectedPlaceAddress: String? = null
     private lateinit var db: FirebaseFirestore
+    private var selectedPlaceName: String? = null
+    private var selectedPlaceId: String? = null
+    private var selectedPlaceRating: Float? = null
+    private var selectedPlacePhotoUrl: String? = null
+    private var selectedPlaceDescription: String? = null
+    private var selectedPlaceAddress: String? = null
+    private lateinit var db: FirebaseFirestore
 
     // Image picker result launcher
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -88,8 +95,13 @@ class AddPostFragment : Fragment() {
                     selectedLocation = place.latLng
                     selectedPlaceName = place.name
                     selectedPlaceId = place.id
+                    selectedPlaceName = place.name
+                    selectedPlaceId = place.id
                     view?.findViewById<TextView>(R.id.selectedLocationText)?.text = 
                         place.name.toString()
+                    
+                    // Fetch place details to get rating and photo
+                    fetchPlaceDetails(place.id)
                     
                     // Fetch place details to get rating and photo
                     fetchPlaceDetails(place.id)
@@ -101,6 +113,9 @@ class AddPostFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val view = inflater.inflate(R.layout.fragment_add_post, container, false)
+
+        // Initialize Firebase
+        db = FirebaseFirestore.getInstance()
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance()
@@ -282,6 +297,10 @@ class AddPostFragment : Fragment() {
                 Place.Field.RATING,
                 Place.Field.PHOTO_METADATAS,
                 Place.Field.EDITORIAL_SUMMARY
+                Place.Field.ADDRESS,
+                Place.Field.RATING,
+                Place.Field.PHOTO_METADATAS,
+                Place.Field.EDITORIAL_SUMMARY
             )
             val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
                 .build(requireActivity())
@@ -329,6 +348,65 @@ class AddPostFragment : Fragment() {
             }
             .addOnFailureListener { exception ->
                 Log.e("AddPostFragment", "Error fetching predictions: ${exception.message}")
+            }
+    }
+
+    private fun fetchPlaceDetails(placeId: String) {
+        val fields = listOf(
+            Place.Field.RATING,
+            Place.Field.PHOTO_METADATAS,
+            Place.Field.EDITORIAL_SUMMARY,
+            Place.Field.ADDRESS
+        )
+        
+        // First check if we have the coffee shop data in Firestore
+        db.collection("CoffeeShops")
+            .document(placeId)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    // Use existing data
+                    selectedPlaceRating = document.getDouble("rating")?.toFloat()
+                    selectedPlacePhotoUrl = document.getString("photoUrl")
+                    selectedPlaceDescription = document.getString("caption")
+                    selectedPlaceAddress = document.getString("address")
+                    Log.d("AddPostFragment", "Using existing coffee shop data")
+                } else {
+                    // Fetch from Places API if not in Firestore
+                    placesClient.fetchPlace(
+                        com.google.android.libraries.places.api.net.FetchPlaceRequest.newInstance(placeId, fields)
+                    ).addOnSuccessListener { response ->
+                        val place = response.place
+                        selectedPlaceRating = place.rating?.toFloat()
+                        selectedPlaceAddress = place.address
+                        
+                        // Get the editorial summary or use default description
+                        selectedPlaceDescription = place.editorialSummary?.toString()
+                            ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"
+                        
+                        // Get the photo URL if available
+                        selectedPlacePhotoUrl = place.photoMetadatas?.firstOrNull()?.let {
+                            "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${it.zza()}&key=${BuildConfig.GOOGLE_MAPS_API_KEY}"
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("AddPostFragment", "Error checking for existing coffee shop", e)
+                // Fallback to Places API
+                placesClient.fetchPlace(
+                    com.google.android.libraries.places.api.net.FetchPlaceRequest.newInstance(placeId, fields)
+                ).addOnSuccessListener { response ->
+                    val place = response.place
+                    selectedPlaceRating = place.rating?.toFloat()
+                    selectedPlaceAddress = place.address
+                    selectedPlaceDescription = place.editorialSummary?.toString()
+                        ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"
+                    
+                    selectedPlacePhotoUrl = place.photoMetadatas?.firstOrNull()?.let {
+                        "https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${it.zza()}&key=${BuildConfig.GOOGLE_MAPS_API_KEY}"
+                    }
+                }
             }
     }
 
