@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
 import com.eaor.coffeefee.data.User
 import com.squareup.picasso.Picasso
+import com.eaor.coffeefee.utils.CircleTransform
 
 class UserProfileFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -246,8 +247,11 @@ class UserProfileFragment : Fragment() {
                         if (!it.profilePictureUrl.isNullOrEmpty()) {
                             Picasso.get()
                                 .load(it.profilePictureUrl)
-                                .placeholder(R.drawable.ic_profile) // Placeholder image
-                                .error(R.drawable.ic_profile) // Error image (without casting)
+                                .resize(200, 200) // Resize the image to 200x200 pixels
+                                .centerInside()
+                                .transform(CircleTransform())
+                                .placeholder(R.drawable.ic_profile)
+                                .error(R.drawable.ic_profile)
                                 .into(view.findViewById<ImageView>(R.id.userAvatar))
                         }
                     }
