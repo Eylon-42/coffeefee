@@ -4,96 +4,69 @@ import android.app.Activity
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageButton
-import android.widget.SearchView
-import android.widget.TextView
-import android.widget.Toast
+import android.view.*
+import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.ImageAdapter
+import com.eaor.coffeefee.utils.GeminiService
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
-import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
-import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.*
 
 class AddPostFragment : Fragment() {
+
     private lateinit var auth: FirebaseAuth
     private lateinit var db: FirebaseFirestore
     private lateinit var bottomNav: View
     private var selectedLocation: LatLng? = null
     private val selectedImages = mutableListOf<Uri>()
     private lateinit var imageAdapter: ImageAdapter
-    private lateinit var placesClient: PlacesClient
 
-    // Image picker result launcher
+    // Activity result launcher for image picker
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
-            // Clear any previously selected images and add the new one
             selectedImages.clear()
             selectedImages.add(it)
             updateImagesRecyclerView()
         }
     }
 
-    private fun uploadImageToStorage(uri: Uri, onSuccess: (String) -> Unit, onFailure: (Exception) -> Unit) {
-        val storageReference = FirebaseStorage.getInstance().reference
-        val photoRef = storageReference.child("Posts/${UUID.randomUUID()}.jpg") // Using UUID to ensure unique filename
-
-        val uploadTask = photoRef.putFile(uri)
-        uploadTask.addOnSuccessListener {
-            // Get the download URL once the upload is successful
-            photoRef.downloadUrl.addOnSuccessListener { uri ->
-                onSuccess(uri.toString()) // Pass the download URL to the success callback
-            }.addOnFailureListener { exception ->
-                onFailure(exception) // Handle any errors during URL retrieval
-            }
-        }.addOnFailureListener { exception ->
-            onFailure(exception) // Handle errors during upload
+    // Autocomplete location result handler
+    private val startAutocomplete = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val place = Autocomplete.getPlaceFromIntent(result.data!!)
+            selectedLocation = place.latLng
+            view?.findViewById<TextView>(R.id.selectedLocationText)?.text = place.name
+        } else if (result.resultCode == Activity.RESULT_CANCELED) {
+            Log.d("AddPostFragment", "User canceled autocomplete")
         }
     }
 
-
-    private val startAutocomplete =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                result.data?.let { intent ->
-                    val place = Autocomplete.getPlaceFromIntent(intent)
-                    Log.d("AddPostFragment", "Place: ${place.name}, ${place.id}")
-                    selectedLocation = place.latLng
-                    view?.findViewById<TextView>(R.id.selectedLocationText)?.text =
-                        place.name.toString()
-                }
-            } else if (result.resultCode == Activity.RESULT_CANCELED) {
-                Log.d("AddPostFragment", "User canceled autocomplete")
-            }
-        }
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val view = inflater.inflate(R.layout.fragment_add_post, container, false)
 
-        // Initialize Places Client
-        placesClient = Places.createClient(requireContext())
+        // Initialize Firebase and Places
+        auth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
+        Places.createClient(requireContext())
 
-        // Handle Bottom Navigation visibility
         bottomNav = requireActivity().findViewById(R.id.bottom_nav)
         bottomNav.visibility = View.GONE
 
@@ -101,24 +74,19 @@ class AddPostFragment : Fragment() {
         setupLocationButton(view)
         setupImagePicker(view)
         setupPostButton(view)
-
-        // Setup search functionality
-        val searchView = view.findViewById<SearchView>(R.id.searchView)
-        if (searchView == null) {
-            Log.e("AddPostFragment", "SearchView is null")
-        } else {
-            setupSearchView(searchView)
-        }
+        setupSearchView(view)
 
         return view
     }
 
     private fun setupToolbar(view: View) {
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
-        (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
-        (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
-        view.findViewById<TextView>(R.id.toolbarTitle).text = "New Post"
+        (requireActivity() as AppCompatActivity).apply {
+            setSupportActionBar(toolbar)
+            supportActionBar?.setDisplayShowTitleEnabled(false)
+        }
 
+        view.findViewById<TextView>(R.id.toolbarTitle).text = "New Post"
         view.findViewById<ImageButton>(R.id.backButton).setOnClickListener {
             findNavController().navigateUp()
         }
@@ -126,174 +94,149 @@ class AddPostFragment : Fragment() {
 
     private fun setupLocationButton(view: View) {
         view.findViewById<Button>(R.id.selectLocationButton).setOnClickListener {
-            launchPlacePicker()
+            val fields = listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG)
+            val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.FULLSCREEN, fields).build(requireContext())
+            startAutocomplete.launch(intent)
         }
     }
 
     private fun setupImagePicker(view: View) {
-        val recyclerView = view.findViewById<RecyclerView>(R.id.imagesRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-
-        imageAdapter = ImageAdapter(selectedImages) { position: Int ->
-            selectedImages.removeAt(position) // Remove the image at the clicked position
-            updateImagesRecyclerView()
+        val recyclerView = view.findViewById<RecyclerView>(R.id.imagesRecyclerView).apply {
+            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+            adapter = ImageAdapter(selectedImages) { position ->
+                selectedImages.removeAt(position)
+                updateImagesRecyclerView()
+            }.also { imageAdapter = it }
+            visibility = View.GONE
         }
-        recyclerView.adapter = imageAdapter
-        recyclerView.visibility = View.GONE
 
         view.findViewById<Button>(R.id.addImageButton).setOnClickListener {
-            // Allow the user to pick only one image
             getContent.launch("image/*")
         }
     }
 
-
     private fun updateImagesRecyclerView() {
         imageAdapter.notifyDataSetChanged()
-        view?.findViewById<RecyclerView>(R.id.imagesRecyclerView)?.let { recyclerView ->
-            recyclerView.visibility = if (selectedImages.isEmpty()) {
-                View.GONE
-            } else {
-                View.VISIBLE
-            }
-        }
+        view?.findViewById<RecyclerView>(R.id.imagesRecyclerView)?.visibility =
+            if (selectedImages.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun setupSearchView(view: View) {
+        val searchView = view.findViewById<SearchView>(R.id.searchView)
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?) = false
+            override fun onQueryTextChange(newText: String?) = false
+        })
     }
 
     private fun setupPostButton(view: View) {
-        // Initialize Firebase
-        auth = FirebaseAuth.getInstance()
-        db = FirebaseFirestore.getInstance()
-
         view.findViewById<Button>(R.id.postButton).setOnClickListener {
-            // Check if fragment is attached before interacting with context
-            if (isAdded) {
-                val experienceDescription = view.findViewById<EditText>(R.id.experienceDescription).text.toString()
-                val currentUser = auth.currentUser
-                val userId = currentUser?.uid
+            val descriptionText = view.findViewById<EditText>(R.id.experienceDescription).text.toString()
+            val locationText = view.findViewById<TextView>(R.id.selectedLocationText).text.toString()
 
-                if (experienceDescription.isEmpty()) {
-                    Toast.makeText(requireContext(), "Please enter a description", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+            when {
+                descriptionText.isBlank() -> {
+                    showToast("Please enter a description")
                 }
-                if (selectedLocation == null) {
-                    Toast.makeText(requireContext(), "Please select a location", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+                selectedLocation == null -> {
+                    showToast("Please select a location")
                 }
-
-                // If an image is selected, upload it
-                if (selectedImages.isNotEmpty()) {
-                    val imageUri = selectedImages[0] // Only one image can be in the list
-                    uploadImageToStorage(imageUri,
-                        onSuccess = { imageUrl ->
-                            // Now post the post with the image URL
-                            createPostInFirestore(experienceDescription, userId, imageUrl)
-                        },
-                        onFailure = { exception ->
-                            Log.e("AddPostFragment", "Image upload failed: ${exception.message}")
-                            Toast.makeText(requireContext(), "Image upload failed", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                } else {
-                    // If no image is selected, just post without a photo
-                    createPostInFirestore(experienceDescription, userId, null)
+                else -> {
+                    generateAIContent(descriptionText, locationText)
+                    handleImageUpload(descriptionText, locationText)
                 }
             }
         }
     }
 
-    private fun createPostInFirestore(experienceDescription: String, userId: String?, imageUrl: String?) {
+    private fun handleImageUpload(description: String, locationName: String) {
+        val userId = auth.currentUser?.uid
+
+        if (selectedImages.isNotEmpty()) {
+            uploadImageToStorage(selectedImages.first(),
+                onSuccess = { imageUrl ->
+                    createPostInFirestore(description, userId, locationName, imageUrl)
+                },
+                onFailure = {
+                    Log.e("AddPostFragment", "Image upload failed: ${it.message}")
+                    showToast("Image upload failed")
+                }
+            )
+        } else {
+            createPostInFirestore(description, userId, locationName, null)
+        }
+    }
+
+    private fun uploadImageToStorage(uri: Uri, onSuccess: (String) -> Unit, onFailure: (Exception) -> Unit) {
+        val photoRef = FirebaseStorage.getInstance()
+            .reference.child("Posts/${UUID.randomUUID()}.jpg")
+
+        photoRef.putFile(uri)
+            .addOnSuccessListener {
+                photoRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                    onSuccess(downloadUri.toString())
+                }.addOnFailureListener(onFailure)
+            }
+            .addOnFailureListener(onFailure)
+    }
+
+    private fun generateAIContent(userDescription: String, locationName: String) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val tags = listOf("coffee", "cafe", "urban", locationName.split(",")[0])
+                val result = GeminiService.getInstance().generateCoffeeExperience(userDescription, locationName, tags)
+
+                withContext(Dispatchers.Main) {
+                    result.fold(
+                        onSuccess = {
+                            Log.d("AddPostFragment", "AI Response: $it")
+                        },
+                        onFailure = {
+                            Log.e("AddPostFragment", "AI Error", it)
+                            showToast("AI generation failed: ${it.message}")
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        Log.d("AddPostFragment", "Coroutine cancelled")
+                    } else {
+                        Log.e("AddPostFragment", "Error calling AI", e)
+                        showToast("AI error: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun createPostInFirestore(description: String, userId: String?, locationName: String, imageUrl: String?) {
         val postData = mapOf(
             "UserId" to userId,
-            "experienceDescription" to experienceDescription,
+            "experienceDescription" to description,
             "location" to mapOf(
-                "name" to view?.findViewById<TextView>(R.id.selectedLocationText)?.text.toString(),
+                "name" to locationName,
                 "latitude" to selectedLocation?.latitude,
                 "longitude" to selectedLocation?.longitude
             ),
             "timestamp" to System.currentTimeMillis(),
-            "photoUrl" to imageUrl // Attach the image URL (if any) to the post
+            "photoUrl" to imageUrl
         )
 
         db.collection("Posts")
             .add(postData)
             .addOnSuccessListener {
-                Log.d("AddPostFragment", "Post added with ID: ${it.id}")
-                Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
+                Log.d("AddPostFragment", "Post added: ${it.id}")
+                showToast("Post added successfully")
                 findNavController().navigateUp()
             }
-            .addOnFailureListener { exception ->
-                Log.e("AddPostFragment", "Error adding post: ${exception.message}")
-                Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
+            .addOnFailureListener {
+                Log.e("AddPostFragment", "Post failed: ${it.message}")
+                showToast("Error adding post")
             }
     }
 
-    private fun launchPlacePicker() {
-        // Check if fragment is attached
-        if (isAdded) {
-            try {
-                val fields = listOf(
-                    Place.Field.ID,
-                    Place.Field.NAME,
-                    Place.Field.LAT_LNG,
-                    Place.Field.ADDRESS
-                )
-                val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
-                    .build(requireActivity())
-                startAutocomplete.launch(intent)
-            } catch (e: Exception) {
-                Log.e("AddPostFragment", "Error launching place picker: ${e.message}")
-                Toast.makeText(requireContext(), "Error launching place picker", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun setupSearchView(searchView: SearchView) {
-        Log.d("AddPostFragment", "SearchView: $searchView")
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                query?.let { fetchAutocompletePredictions(it) }
-                return true
-            }
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                // Optionally handle text change
-                return true
-            }
-        })
-    }
-
-    private fun fetchAutocompletePredictions(query: String) {
-        if (!::placesClient.isInitialized) {
-            Log.e("AddPostFragment", "PlacesClient is not initialized")
-            return
-        }
-
-        val token = AutocompleteSessionToken.newInstance()
-        val request = FindAutocompletePredictionsRequest.builder()
-            .setQuery(query)
-            .setSessionToken(token)
-            .setCountries("IL") // Restrict to Israel
-            .build()
-
-        placesClient.findAutocompletePredictions(request)
-            .addOnSuccessListener { response ->
-                for (prediction in response.autocompletePredictions) {
-                    Log.i("AddPostFragment", "Place ID: ${prediction.placeId}, Name: ${prediction.getPrimaryText(null)}")
-                    // Handle predictions (e.g., display in a RecyclerView)
-                }
-            }
-            .addOnFailureListener { exception ->
-                Log.e("AddPostFragment", "Error fetching predictions: ${exception.message}")
-            }
-    }
-
-    companion object {
-        private const val PLACE_AUTOCOMPLETE_REQUEST_CODE = 1
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        // Restore the visibility of the bottom navigation bar when the fragment is destroyed
-        bottomNav.visibility = View.VISIBLE
+    private fun showToast(message: String) {
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 }
