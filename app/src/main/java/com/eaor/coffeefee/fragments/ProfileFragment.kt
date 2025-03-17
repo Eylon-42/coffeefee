@@ -83,14 +83,14 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
+        
         // Initialize Firebase and Repository
         auth = FirebaseAuth.getInstance()
         val db = FirebaseFirestore.getInstance()
         storage = FirebaseStorage.getInstance()
         val userDao = AppDatabase.getDatabase(requireContext()).userDao()
         userRepository = UserRepository(userDao, db)
-
+        
         // Initialize views
         bottomNav = requireActivity().findViewById(R.id.bottom_nav)
         editUserName = view.findViewById(R.id.editUserName)
@@ -103,13 +103,13 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
 
         // Initially hide progress bar
         progressBar.visibility = GONE
-
+        
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
-
+        
         view.findViewById<TextView>(R.id.toolbarTitle).text = "Edit Profile"
-
+        
         // Setup back button
         view.findViewById<ImageButton>(R.id.backButton).setOnClickListener {
             findNavController().navigateUp()
