@@ -29,64 +29,89 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- TextView to display current location -->
+            <!-- Location Section -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Location"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp"/>
+
             <TextView
                 android:id="@+id/currentLocationText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Current Location: Not set"
-                android:layout_marginTop="8dp" />
+                android:text="Not selected"
+                android:textColor="@android:color/darker_gray"/>
 
-            <!-- Button to change location -->
             <Button
                 android:id="@+id/changeLocationButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Change Location" />
+                android:text="Change Location"
+                android:layout_marginTop="8dp"/>
 
-            <!-- TextView to label the image section -->
+            <!-- Image Section -->
+            <LinearLayout
+                android:id="@+id/imageSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Image"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:layout_marginBottom="8dp"/>
+
+                <ImageView
+                    android:id="@+id/imageView"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:visibility="gone"
+                    android:scaleType="centerCrop"
+                    android:layout_marginBottom="8dp"/>
+
+                <Button
+                    android:id="@+id/addImageButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Add Image"/>
+            </LinearLayout>
+
+            <!-- Review Section -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Images"
-                android:layout_marginTop="16dp" />
+                android:text="Your Review"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp"/>
 
-            <!-- RecyclerView to display selected images -->
-
-            <ImageView
-                android:id="@+id/imageView"
-                android:layout_width="match_parent"
-                android:layout_height="200dp"
-                android:layout_marginTop="8dp" />
-
-            <!-- Button to add images -->
-            <Button
-                android:id="@+id/addImageButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Add Image" />
-
-            <!-- EditText for user to enter the review or experience -->
             <EditText
                 android:id="@+id/postReviewText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
                 android:background="@drawable/edit_text_background"
                 android:hint="Write your review..."
                 android:minHeight="100dp"
                 android:gravity="top"
-                android:padding="12dp" />
+                android:padding="12dp"
+                android:textSize="14sp"/>
 
-            <!-- Button to save the post after editing -->
+            <!-- Save Button -->
             <Button
                 android:id="@+id/savePostButton"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginTop="16dp"
-                android:text="Save" />
+                android:layout_marginTop="24dp"
+                android:text="Save Changes"/>
+
         </LinearLayout>
     </ScrollView>
 </androidx.constraintlayout.widget.ConstraintLayout>

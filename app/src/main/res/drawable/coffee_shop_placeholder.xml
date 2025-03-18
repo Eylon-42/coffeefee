@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background color -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#E8DECB" /> <!-- Warm coffee beige color -->
+        </shape>
+    </item>
+    
+    <!-- Coffee icon -->
+    <item
+        android:drawable="@drawable/default_coffee_shop"
+        android:gravity="center"
+        android:width="120dp"
+        android:height="120dp" />
+</layer-list> 
