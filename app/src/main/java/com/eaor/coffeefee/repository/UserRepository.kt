@@ -27,7 +27,7 @@ class UserRepository(
                         uid = userId,
                         name = document.getString("name") ?: "",
                         email = document.getString("email") ?: "",
-                        profilePictureUrl = document.getString("profilePictureUrl")
+                        profilePictureUrl = document.getString("profilePhotoUrl")
                     )
                     // Cache in Room
                     try {

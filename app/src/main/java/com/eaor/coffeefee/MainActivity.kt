@@ -9,6 +9,7 @@ import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
+import com.eaor.coffeefee.fragments.FeedFragment
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -42,5 +43,10 @@ class MainActivity : AppCompatActivity() {
         val navController = navHostFragment.navController
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_nav)
         bottomNav.setupWithNavController(navController)
+    }
+
+    fun updateFeedCommentCount(postId: String, count: Int) {
+        val feedFragment = supportFragmentManager.fragments.firstOrNull { it is FeedFragment } as? FeedFragment
+        feedFragment?.updateCommentCount(postId, count)
     }
 }

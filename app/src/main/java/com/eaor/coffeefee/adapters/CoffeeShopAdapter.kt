@@ -90,4 +90,10 @@ class CoffeeShopAdapter(
         }
         notifyDataSetChanged()
     }
+
+    fun updateData(newData: List<CoffeeShop>) {
+        coffeeShops = newData
+        filteredCoffeeShops = newData
+        notifyDataSetChanged()
+    }
 }

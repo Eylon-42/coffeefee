@@ -2,12 +2,14 @@ package com.eaor.coffeefee.fragments
 
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
@@ -87,22 +89,12 @@ class SearchFragment : Fragment() {
         scope.launch {
             repository.getAllCoffeeShops().collectLatest { coffeeShops ->
                 withContext(Dispatchers.Main) {
-                    adapter = CoffeeShopAdapter(coffeeShops)
-                    view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
-                    
-                    // Set up click listener again for the new adapter
-                    adapter.setOnItemClickListener { coffeeShop ->
-                        val bundle = Bundle().apply {
-                            putString("name", coffeeShop.name)
-                            putString("description", coffeeShop.caption)
-                            putFloat("latitude", coffeeShop.latitude.toFloat())
-                            putFloat("longitude", coffeeShop.longitude.toFloat())
-                            putString("placeId", coffeeShop.placeId)
-                            coffeeShop.photoUrl?.let { putString("photoUrl", it) }
-                            coffeeShop.rating?.let { putFloat("rating", it) }
-                            coffeeShop.address?.let { putString("address", it) }
-                        }
-                        findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+                    if (this@SearchFragment::adapter.isInitialized) {
+                        adapter.updateData(coffeeShops)
+                    } else {
+                        adapter = CoffeeShopAdapter(coffeeShops)
+                        view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+                        setupAdapterClickListener()
                     }
                 }
             }
@@ -166,27 +158,76 @@ class SearchFragment : Fragment() {
     }
 
     private fun searchCoffeeShops(query: String) {
+        // Log the search attempt
+        Log.d("SearchFragment", "Searching for: '$query'")
+        
         scope.launch {
-            val results = repository.searchCoffeeShops(query)
-            withContext(Dispatchers.Main) {
-                adapter = CoffeeShopAdapter(results)
-                view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+            try {
+                val results = repository.searchCoffeeShops(query)
                 
-                // Set up click listener for the new adapter
-                adapter.setOnItemClickListener { coffeeShop ->
-                    val bundle = Bundle().apply {
-                        putString("name", coffeeShop.name)
-                        putString("description", coffeeShop.caption)
-                        putFloat("latitude", coffeeShop.latitude.toFloat())
-                        putFloat("longitude", coffeeShop.longitude.toFloat())
-                        putString("placeId", coffeeShop.placeId)
-                        coffeeShop.photoUrl?.let { putString("photoUrl", it) }
-                        coffeeShop.rating?.let { putFloat("rating", it) }
-                        coffeeShop.address?.let { putString("address", it) }
+                // Log the results
+                Log.d("SearchFragment", "Search returned ${results.size} results")
+                
+                withContext(Dispatchers.Main) {
+                    if (this@SearchFragment::adapter.isInitialized) {
+                        adapter.updateData(results)
+                        Log.d("SearchFragment", "Updated adapter with ${results.size} results")
+                    } else {
+                        adapter = CoffeeShopAdapter(results)
+                        view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+                        setupAdapterClickListener()
+                        Log.d("SearchFragment", "Created new adapter with ${results.size} results")
                     }
-                    findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+                    
+                    // Add empty state TextView if it doesn't exist yet
+                    val recyclerView = view?.findViewById<RecyclerView>(R.id.recyclerView)
+                    var emptyView = view?.findViewById<TextView>(R.id.emptyStateText)
+                    
+                    if (emptyView == null && recyclerView != null) {
+                        // Create the empty state TextView dynamically if it doesn't exist in layout
+                        val parent = recyclerView.parent as? ViewGroup
+                        if (parent != null) {
+                            emptyView = TextView(requireContext()).apply {
+                                id = View.generateViewId()
+                                text = "No coffee shops found"
+                                textSize = 16f
+                                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT
+                                )
+                                setPadding(0, 100, 0, 0)
+                            }
+                            parent.addView(emptyView)
+                        }
+                    }
+                    
+                    // Show/hide empty state message
+                    emptyView?.visibility = if (results.isEmpty()) View.VISIBLE else View.GONE
+                }
+            } catch (e: Exception) {
+                Log.e("SearchFragment", "Search error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    // Show error message
+                    Toast.makeText(context, "Search error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    private fun setupAdapterClickListener() {
+        adapter.setOnItemClickListener { coffeeShop ->
+            val bundle = Bundle().apply {
+                putString("name", coffeeShop.name)
+                putString("description", coffeeShop.caption)
+                putFloat("latitude", coffeeShop.latitude.toFloat())
+                putFloat("longitude", coffeeShop.longitude.toFloat())
+                putString("placeId", coffeeShop.placeId)
+                coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                coffeeShop.rating?.let { putFloat("rating", it) }
+                coffeeShop.address?.let { putString("address", it) }
+            }
+            findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
         }
     }
 }
