@@ -111,14 +111,16 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
 
 
-    
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")  // Use the latest version
+
     // Add Glide for image loading
     implementation("com.github.bumptech.glide:glide:4.16.0")
-    annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
+    kapt("com.github.bumptech.glide:compiler:4.16.0")
     
     // Add AppCompat
     implementation("androidx.appcompat:appcompat:1.6.1")
-    
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")  // Use the latest version
+
     // Add Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
