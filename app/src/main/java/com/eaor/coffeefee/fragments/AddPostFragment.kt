@@ -21,25 +21,32 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.ImageAdapter
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.net.FetchPhotoRequest
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.vertexai.type.content
+import com.google.firebase.vertexai.vertexAI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.UUID
-import com.google.android.libraries.places.api.net.FetchPhotoRequest
-import com.google.android.libraries.places.api.net.FetchPlaceRequest
-import com.eaor.coffeefee.MainActivity
 
 class AddPostFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -201,8 +208,17 @@ class AddPostFragment : Fragment() {
                     val imageUri = selectedImages[0] // Only one image can be in the list
                     uploadImageToStorage(imageUri,
                         onSuccess = { imageUrl ->
-                            // Now post the post with the image URL
-                            createPostInFirestore(experienceDescription, userId, imageUrl)
+                            var tagList:List<String> = emptyList()
+                            getGeminiTags(experienceDescription) { tags ->
+                                if (tags != null) {
+                                    Log.e("AddPostFragment", "Tags: $tags") // Output: Tags: coffee, delicious, cozy
+                                    tagList = tags.split(",").map { it.trim() } // Convert to a list
+                                    Log.e("AddPostFragment","Tag list: $tagList") // Output: Tag list: [coffee, delicious, cozy]
+                                    createPostInFirestore(experienceDescription, userId, imageUrl,tagList)
+                                } else {
+                                    println("Failed to generate tags.")
+                                }
+                            }
                         },
                         onFailure = { exception ->
                             Log.e("AddPostFragment", "Image upload failed: ${exception.message}")
@@ -210,19 +226,39 @@ class AddPostFragment : Fragment() {
                         }
                     )
                 } else {
+                    var tagList:List<String> = emptyList()
+                    getGeminiTags(experienceDescription) { tags ->
+                        if (tags != null) {
+                            Log.e("AddPostFragment", "Tags: $tags") // Output: Tags: coffee, delicious, cozy
+                            tagList = tags.split(",").map { it.trim() } // Convert to a list
+                            // If no image is selected, just post without a photo
+                            createPostInFirestore(experienceDescription, userId, null,tagList)
+                            Log.e("AddPostFragment","Tag list: $tagList") // Output: Tag list: [coffee, delicious, cozy]
+                        } else {
+                            println("Failed to generate tags.")
+                        }
+                    }
+
                     // If no image is selected, just post without a photo
-                    createPostInFirestore(experienceDescription, userId, null)
+
                 }
             }
         }
     }
 
-    private fun createPostInFirestore(experienceDescription: String, userId: String?, imageUrl: String?) {
+    private fun createPostInFirestore(
+        experienceDescription: String,
+        userId: String?,
+        imageUrl: String?,
+        tagList: List<String>
+    ) {
         if (selectedLocation == null || selectedPlaceName == null) {
-            Toast.makeText(requireContext(), "Please select a coffee shop location", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Please select a coffee shop location", Toast.LENGTH_SHORT)
+                .show()
             return
         }
 
+        // Create the post data
         val postData = mapOf(
             "UserId" to userId,
             "experienceDescription" to experienceDescription,
@@ -238,37 +274,83 @@ class AddPostFragment : Fragment() {
             "commentCount" to 0,
             "likes" to listOf<String>()
         )
-
-        // Create coffee shop data
-        val coffeeShopData = hashMapOf(
-            "name" to selectedPlaceName,
-            "rating" to selectedPlaceRating,
-            "caption" to (selectedPlaceDescription ?: ""),
-            "latitude" to selectedLocation!!.latitude,
-            "longitude" to selectedLocation!!.longitude,
-            "placeId" to selectedPlaceId,
-            "photoUrl" to selectedPlacePhotoUrl,
-            "address" to (selectedPlaceAddress ?: "")
-        )
-
+        Log.e("AddPostFragment-Tag", "Post data: $tagList")
         // First add the post
         db.collection("Posts")
             .add(postData)
-            .addOnSuccessListener {
-                Log.d("AddPostFragment", "Post added with ID: ${it.id}")
-                
-                // Then add/update the coffee shop
-                db.collection("CoffeeShops")
-                    .document(selectedPlaceId!!)
-                    .set(coffeeShopData)
-                    .addOnSuccessListener {
-                        Log.d("AddPostFragment", "Coffee shop added successfully")
-                        Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
-                        findNavController().navigateUp()
+            .addOnSuccessListener { documentReference ->
+                Log.d("AddPostFragment", "Post added with ID: ${documentReference.id}")
+
+                // Now check if the coffee shop exists
+                val coffeeShopRef = db.collection("CoffeeShops").document(selectedPlaceId!!)
+
+                coffeeShopRef.get().addOnSuccessListener { document ->
+                    if (document.exists()) {
+                        // Coffee shop exists, so merge the new tags with the existing tags
+                        val existingTags = document.get("tags") as? List<String> ?: listOf()
+                        val updatedTags = (existingTags + tagList).distinct()  // Merge and remove duplicates
+
+                        // Update the coffee shop's tags field
+                        coffeeShopRef.update("tags", updatedTags)
+                            .addOnSuccessListener {
+                                Log.d("AddPostFragment", "Tags updated successfully")
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Post added and tags updated",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                findNavController().navigateUp()
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("AddPostFragment", "Error updating tags", e)
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Failed to update tags: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                    } else {
+                        // Coffee shop does not exist, so create a new document with tags
+                        val coffeeShopData = mapOf(
+                            "name" to selectedPlaceName,
+                            "rating" to selectedPlaceRating,
+                            "caption" to (selectedPlaceDescription ?: ""),
+                            "latitude" to selectedLocation!!.latitude,
+                            "longitude" to selectedLocation!!.longitude,
+                            "placeId" to selectedPlaceId,
+                            "photoUrl" to selectedPlacePhotoUrl,
+                            "address" to (selectedPlaceAddress ?: ""),
+                            "tags" to tagList // Include tags here
+                        )
+
+                        // Create the new coffee shop document
+                        coffeeShopRef.set(coffeeShopData)
+                            .addOnSuccessListener {
+                                Log.d("AddPostFragment", "Coffee shop added successfully")
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Post added and coffee shop data saved",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                findNavController().navigateUp()
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("AddPostFragment", "Error adding coffee shop", e)
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Failed to add coffee shop: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                     }
+                }
                     .addOnFailureListener { e ->
-                        Log.e("AddPostFragment", "Error adding coffee shop", e)
-                        Toast.makeText(requireContext(), "Failed to add coffee shop: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Log.e("AddPostFragment", "Error checking coffee shop existence", e)
+                        Toast.makeText(
+                            requireContext(),
+                            "Error checking coffee shop: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
             }
             .addOnFailureListener { exception ->
@@ -276,6 +358,7 @@ class AddPostFragment : Fragment() {
                 Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
             }
     }
+
 
     private fun launchPlacePicker() {
         try {
@@ -434,6 +517,29 @@ class AddPostFragment : Fragment() {
             } else {
                 Log.e("AddPostFragment", "Error uploading photo: ${task.exception?.message}")
                 callback(null)
+            }
+        }
+    }
+
+    private fun getGeminiTags(experienceDescription: String, callback: (String?) -> Unit) {
+        val generativeModel = Firebase.vertexAI.generativeModel("gemini-2.0-flash")
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prompt = "Generate a list of general tags (maximum 5) that can be understood from this post: '$experienceDescription'. Return only the tags, separated by commas."
+                val content = content { text(prompt) }
+                val response = generativeModel.generateContent(content)
+
+                val tags = response.text
+                withContext(Dispatchers.Main) {
+                    Log.d("Gemini Response", "Gemini response: $tags")
+                    callback(tags)
+                }
+            } catch (e: Exception) {
+                Log.e("Gemini Tags", "Error getting tags from Gemini: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    callback(null)
+                }
             }
         }
     }

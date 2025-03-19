@@ -2,6 +2,7 @@ package com.eaor.coffeefee.fragments
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,8 +14,15 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.vertexai.type.content
+import com.google.firebase.vertexai.vertexAI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class GetToKnowYouFragment : Fragment() {
     private lateinit var coffeeDrinkEditText: EditText
@@ -96,19 +104,42 @@ class GetToKnowYouFragment : Fragment() {
 
         // Prepare data in the required format
         val userDetails = hashMapOf(
-                "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
-                "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
-                "preferredAtmosphere" to atmosphereEditText.text.toString(),
-                "locationPreference" to locationPreferenceEditText.text.toString()
+            "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
+            "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
+            "preferredAtmosphere" to atmosphereEditText.text.toString(),
+            "locationPreference" to locationPreferenceEditText.text.toString()
         )
 
         // Save to Firebase
         db.collection("Users")
             .document(userId)
-            .update("preferences",userDetails)
+            .update("preferences", userDetails)
             .addOnSuccessListener {
-                // Navigate to sign-in fragment after saving
-                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+                // After saving user details, get Gemini tags based on user preferences
+                getGeminiTags(userDetails, "Experience description placeholder") { generatedTags ->
+                    if (generatedTags != null) {
+                        // If tags are generated successfully, update them in the user's document
+                        val tags = generatedTags.split(",").map { it.trim() }
+
+                        // Save the generated tags to the user's document
+                        db.collection("Users")
+                            .document(userId)
+                            .update("tags", tags)
+                            .addOnSuccessListener {
+                                // Navigate to sign-in fragment after saving the tags
+                                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(
+                                    context,
+                                    "Failed to save tags: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                    } else {
+                        Toast.makeText(context, "Failed to generate tags", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .addOnFailureListener { e ->
                 Toast.makeText(
@@ -118,6 +149,43 @@ class GetToKnowYouFragment : Fragment() {
                 ).show()
             }
     }
+
+    // Gemini tags function (as provided)
+    private fun getGeminiTags(userDetails: Map<String, String>, experienceDescription: String, callback: (String?) -> Unit) {
+        val generativeModel = Firebase.vertexAI.generativeModel("gemini-2.0-flash")
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prompt = """
+            Based on the following user preferences, generate a list of the top 6-7 tags that best match the user's interests and can help recommend the best coffee shops for them:
+
+            User Preferences:
+            - Favorite Coffee Drink: ${userDetails["favoriteCoffeeDrink"]}
+            - Dietary Needs: ${userDetails["dietaryNeeds"]}
+            - Preferred Atmosphere: ${userDetails["preferredAtmosphere"]}
+            - Location Preference: ${userDetails["locationPreference"]}
+
+            Experience Description: '$experienceDescription'
+
+            Return only the tags, separated by commas, that are most relevant for matching the user to suitable coffee shops.
+            """
+                val content = content { text(prompt) }
+                val response = generativeModel.generateContent(content)
+
+                val tags = response.text
+                withContext(Dispatchers.Main) {
+                    Log.d("Gemini Response", "Gemini response: $tags")
+                    callback(tags)
+                }
+            } catch (e: Exception) {
+                Log.e("Gemini Tags", "Error getting tags from Gemini: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    callback(null)
+                }
+            }
+        }
+    }
+
 
     private fun validateAnswers(): Boolean {
         // Validate preferences
