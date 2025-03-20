@@ -10,4 +10,5 @@
     <string name="rating_icon">Rating icon</string>
     <string name="search_coffee_shops">Search coffee shops</string>
     <string name="arrow_icon">Navigate to details</string>
+    <string name="coffee_shop_image">Coffee shop image</string>
 </resources>

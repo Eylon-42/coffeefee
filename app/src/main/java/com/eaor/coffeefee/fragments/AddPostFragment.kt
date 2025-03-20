@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -47,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import com.eaor.coffeefee.utils.VertexAIService
 
 class AddPostFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -578,6 +580,37 @@ class AddPostFragment : Fragment() {
             .addOnFailureListener { e ->
                 Log.e("AddPostFragment", "Error saving coffee shop: ${e.message}")
             }
+    }
+
+    private fun generateAIContent(userDescription: String, locationName: String) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val tags = listOf("coffee", "cafe", "urban", locationName.split(",")[0])
+                val result = VertexAIService.getInstance().generateCoffeeExperience(userDescription, locationName, tags)
+
+                withContext(Dispatchers.Main) {
+                    result.fold(
+                        onSuccess = {
+                            Log.d("AddPostFragment", "AI Response: $it")
+                            view?.findViewById<EditText>(R.id.experienceDescription)?.setText(it)
+                        },
+                        onFailure = {
+                            Log.e("AddPostFragment", "AI Error", it)
+                            Toast.makeText(requireContext(), "AI generation failed: ${it.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        Log.d("AddPostFragment", "Coroutine cancelled")
+                    } else {
+                        Log.e("AddPostFragment", "Error calling AI", e)
+                        Toast.makeText(requireContext(), "AI error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
     }
 
     companion object {

@@ -33,12 +33,25 @@
     </fragment>
 
     <fragment
-        android:id="@+id/favoriteFragment"
-        android:name="com.eaor.coffeefee.fragments.FavoriteFragment"
-        android:label="Favorite">
+        android:id="@+id/suggestionFragment"
+        android:name="com.eaor.coffeefee.fragments.SuggestionFragment"
+        android:label="Suggestions">
         <action
-            android:id="@+id/action_favoriteFragment_to_coffeeFragment"
+            android:id="@+id/action_suggestionFragment_to_coffeeFragment"
             app:destination="@id/coffeeFragment" />
+        <action
+            android:id="@+id/action_suggestionFragment_to_userPreferencesFragment"
+            app:destination="@id/userPreferencesFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/userPreferencesFragment"
+        android:name="com.eaor.coffeefee.fragments.UserPreferencesFragment"
+        android:label="Preferences"
+        tools:layout="@layout/fragment_user_preferences">
+        <action
+            android:id="@+id/action_userPreferencesFragment_to_suggestionFragment"
+            app:destination="@id/suggestionFragment" />
     </fragment>
 
     <fragment

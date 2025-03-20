@@ -2,10 +2,12 @@ package com.eaor.coffeefee.repositories
 
 import android.util.Log
 import com.eaor.coffeefee.models.CoffeeShop
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.catch
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -13,6 +15,7 @@ import kotlin.math.sqrt
 
 class CoffeeShopRepository private constructor() {
     private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
     private val coffeeShopsCollection = db.collection("CoffeeShops")
 
     suspend fun getCoffeeShop(placeId: String): CoffeeShop? {
@@ -28,7 +31,8 @@ class CoffeeShopRepository private constructor() {
                     longitude = (data?.get("longitude") as? Double) ?: 0.0,
                     placeId = placeId,
                     photoUrl = data?.get("photoUrl") as? String,
-                    address = data?.get("address") as? String
+                    address = data?.get("address") as? String,
+                    tags = data?.get("tags") as? List<String> ?: emptyList()
                 )
             } else null
         } catch (e: Exception) {
@@ -38,31 +42,44 @@ class CoffeeShopRepository private constructor() {
     }
 
     fun getAllCoffeeShops(): Flow<List<CoffeeShop>> = flow {
-        try {
-            val snapshot = coffeeShopsCollection.get().await()
-            val coffeeShops = snapshot.documents.mapNotNull { document ->
-                try {
-                    CoffeeShop(
-                        name = document.getString("name") ?: "",
-                        rating = document.getDouble("rating")?.toFloat(),
-                        caption = document.getString("caption") ?: "",
-                        latitude = document.getDouble("latitude") ?: 0.0,
-                        longitude = document.getDouble("longitude") ?: 0.0,
-                        address = document.getString("address"),
-                        photoUrl = document.getString("photoUrl"),
-                        placeId = document.id
-                    )
-                } catch (e: Exception) {
-                    Log.e("CoffeeShopRepository", "Error mapping document: ${document.id}", e)
-                    null
-                }
+        Log.d("CoffeeShopRepository", "Getting all coffee shops from CoffeeShops collection")
+        
+        val snapshot = coffeeShopsCollection.get().await()
+        Log.d("CoffeeShopRepository", "Retrieved ${snapshot.documents.size} coffee shop documents")
+        
+        val coffeeShops = snapshot.documents.mapNotNull { doc ->
+            try {
+                val name = doc.getString("name") ?: return@mapNotNull null
+                val rating = doc.getDouble("rating")?.toFloat()
+                val caption = doc.getString("caption") ?: ""
+                val latitude = doc.getDouble("latitude") ?: 0.0
+                val longitude = doc.getDouble("longitude") ?: 0.0
+                val address = doc.getString("address")
+                val photoUrl = doc.getString("photoUrl")
+                val placeId = doc.id
+                val tags = doc.get("tags") as? List<String> ?: emptyList()
+                
+                CoffeeShop(
+                    name = name,
+                    rating = rating,
+                    caption = caption,
+                    latitude = latitude,
+                    longitude = longitude,
+                    address = address,
+                    photoUrl = photoUrl,
+                    placeId = placeId,
+                    tags = tags
+                )
+            } catch (e: Exception) {
+                Log.e("CoffeeShopRepository", "Error parsing coffee shop document", e)
+                null
             }
-            emit(coffeeShops)
-        } catch (e: Exception) {
-            Log.e("CoffeeShopRepository", "Error getting coffee shops", e)
-            emit(emptyList())
         }
+        
+        Log.d("CoffeeShopRepository", "Emitting ${coffeeShops.size} coffee shops")
+        emit(coffeeShops)
     }
+
 
     suspend fun searchCoffeeShops(query: String): List<CoffeeShop> {
         return try {
@@ -99,7 +116,8 @@ class CoffeeShopRepository private constructor() {
                     longitude = data["longitude"] as? Double ?: 0.0,
                     placeId = document.id,
                     photoUrl = data["photoUrl"] as? String,
-                    address = data["address"] as? String
+                    address = data["address"] as? String,
+                    tags = data["tags"] as? List<String> ?: emptyList()
                 )
             }
             
@@ -133,7 +151,8 @@ class CoffeeShopRepository private constructor() {
                         longitude = shopLng,
                         placeId = document.id,
                         photoUrl = data["photoUrl"] as? String,
-                        address = data["address"] as? String
+                        address = data["address"] as? String,
+                        tags = data["tags"] as? List<String> ?: emptyList()
                     )
                 } else null
             }
@@ -181,7 +200,8 @@ class CoffeeShopRepository private constructor() {
                     longitude = document.getDouble("longitude") ?: 0.0,
                     address = document.getString("address"),
                     photoUrl = document.getString("photoUrl"),
-                    placeId = document.id
+                    placeId = document.id,
+                    tags = document.get("tags") as? List<String> ?: emptyList()
                 )
             } else null
         } catch (e: Exception) {
