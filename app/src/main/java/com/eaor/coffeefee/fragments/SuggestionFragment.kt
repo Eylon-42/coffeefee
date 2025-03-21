@@ -5,6 +5,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -32,6 +33,7 @@ class SuggestionFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: CoffeeShopAdapter
     private lateinit var noSuggestionsMessage: TextView
+    private lateinit var loadingProgressBar: ProgressBar
     private val repository = CoffeeShopRepository.getInstance()
     private val vertexAIService = VertexAIService.getInstance()
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -53,6 +55,7 @@ class SuggestionFragment : Fragment() {
         
         recyclerView = view.findViewById(R.id.recyclerView)
         noSuggestionsMessage = view.findViewById(R.id.noSuggestionsMessage)
+        loadingProgressBar = view.findViewById(R.id.loadingProgressBar)
         recyclerView.layoutManager = LinearLayoutManager(context)
         adapter = CoffeeShopAdapter(emptyList(), showCaptions = true)
         recyclerView.adapter = adapter
@@ -75,7 +78,7 @@ class SuggestionFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     recyclerView.visibility = View.GONE
                     noSuggestionsMessage.visibility = View.GONE
-                    // TODO: Add a progress indicator
+                    loadingProgressBar.visibility = View.VISIBLE
                 }
                 
                 val userSnapshot = db.collection("Users")
@@ -93,6 +96,7 @@ class SuggestionFragment : Fragment() {
                     withContext(Dispatchers.Main) {
                         noSuggestionsMessage.visibility = View.VISIBLE
                         recyclerView.visibility = View.GONE
+                        loadingProgressBar.visibility = View.GONE
                     }
                     return@launch
                 }
@@ -115,6 +119,7 @@ class SuggestionFragment : Fragment() {
                             Toast.makeText(requireContext(), "No coffee shops available", Toast.LENGTH_SHORT).show()
                             noSuggestionsMessage.visibility = View.VISIBLE
                             recyclerView.visibility = View.GONE
+                            loadingProgressBar.visibility = View.GONE
                         }
                         return@launch
                     }
@@ -135,6 +140,7 @@ class SuggestionFragment : Fragment() {
                             Toast.makeText(requireContext(), "Error loading coffee shops", Toast.LENGTH_SHORT).show()
                             noSuggestionsMessage.visibility = View.VISIBLE
                             recyclerView.visibility = View.GONE
+                            loadingProgressBar.visibility = View.GONE
                         }
                     }
                 }
@@ -145,6 +151,7 @@ class SuggestionFragment : Fragment() {
                     Toast.makeText(requireContext(), "Error loading suggestions", Toast.LENGTH_SHORT).show()
                     noSuggestionsMessage.visibility = View.VISIBLE
                     recyclerView.visibility = View.GONE
+                    loadingProgressBar.visibility = View.GONE
                 }
             }
         }
@@ -158,6 +165,9 @@ class SuggestionFragment : Fragment() {
             result.fold(
                 onSuccess = { suggestions ->
                     withContext(Dispatchers.Main) {
+                        // Hide loading indicator
+                        loadingProgressBar.visibility = View.GONE
+                        
                         if (suggestions.isEmpty()) {
                             // Show the "no suggestions" message
                             noSuggestionsMessage.visibility = View.VISIBLE
@@ -199,6 +209,7 @@ class SuggestionFragment : Fragment() {
                 onFailure = { error ->
                     Log.e("SuggestionFragment", "Error getting AI suggestions", error)
                     withContext(Dispatchers.Main) {
+                        loadingProgressBar.visibility = View.GONE
                         Toast.makeText(requireContext(), "Error getting AI suggestions", Toast.LENGTH_SHORT).show()
                         
                         // Fall back to regular tag matching
@@ -209,6 +220,7 @@ class SuggestionFragment : Fragment() {
         } catch (e: Exception) {
             Log.e("SuggestionFragment", "Exception during AI suggestion generation", e)
             withContext(Dispatchers.Main) {
+                loadingProgressBar.visibility = View.GONE
                 Toast.makeText(requireContext(), "Error generating AI suggestions", Toast.LENGTH_SHORT).show()
                 
                 // Fall back to regular tag matching
@@ -222,6 +234,7 @@ class SuggestionFragment : Fragment() {
             Log.d("SuggestionFragment", "No user tags found")
             noSuggestionsMessage.visibility = View.VISIBLE
             recyclerView.visibility = View.GONE
+            loadingProgressBar.visibility = View.GONE
             return
         }
         
@@ -246,6 +259,7 @@ class SuggestionFragment : Fragment() {
             // Show the "no suggestions" message
             noSuggestionsMessage.visibility = View.VISIBLE
             recyclerView.visibility = View.GONE
+            loadingProgressBar.visibility = View.GONE
             
             Log.d("SuggestionFragment", "No matching coffee shops found")
         } else {

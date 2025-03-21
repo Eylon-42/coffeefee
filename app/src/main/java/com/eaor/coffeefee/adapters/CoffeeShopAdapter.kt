@@ -13,6 +13,7 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.CoffeeShop
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.squareup.picasso.Picasso
 
 class CoffeeShopAdapter(
     private var coffeeShops: List<CoffeeShop>,
@@ -188,9 +189,14 @@ class CoffeeShopAdapter(
         }
         
         // Set image if available
-        coffeeShop.photoUrl?.let { url ->
-            // Load image with your preferred library (Glide, Picasso, etc.)
-            // For example: Glide.with(holder.itemView).load(url).into(holder.coffeeImage)
+        if (!coffeeShop.photoUrl.isNullOrEmpty()) {
+            Picasso.get()
+                .load(coffeeShop.photoUrl)
+                .placeholder(R.drawable.placeholder)
+                .error(R.drawable.placeholder)
+                .into(holder.coffeeImage)
+        } else {
+            holder.coffeeImage.setImageResource(R.drawable.placeholder)
         }
         
         // Set favorite button click listener
