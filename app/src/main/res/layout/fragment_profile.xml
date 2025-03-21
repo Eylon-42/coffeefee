@@ -14,34 +14,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- User's name at the top -->
-    <TextView
-        android:id="@+id/userNameDisplay"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="User Name"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_marginTop="24dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
     <!-- User's existing profile image -->
-    <ImageView
-        android:id="@+id/profileImage"
-        android:layout_width="120dp"
-        android:layout_height="120dp"
-        android:layout_marginTop="16dp"
-        android:src="@drawable/ic_profile"
-        android:scaleType="centerInside"
-        android:background="@drawable/circle_background"
-        android:padding="2dp"
-        android:clickable="true"
-        android:focusable="true"
-        app:layout_constraintTop_toBottomOf="@id/userNameDisplay"
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/profileImageView"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_marginTop="24dp"
+        android:src="@drawable/default_avatar"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:shapeAppearanceOverlay="@style/CircularImageView"
+        android:scaleType="centerCrop" />
 
     <!-- Edit fields section -->
     <TextView
@@ -53,7 +37,7 @@
         android:textStyle="bold"
         android:layout_marginStart="24dp"
         android:layout_marginTop="24dp"
-        app:layout_constraintTop_toBottomOf="@id/profileImage"
+        app:layout_constraintTop_toBottomOf="@id/profileImageView"
         app:layout_constraintStart_toStartOf="parent"/>
 
     <EditText

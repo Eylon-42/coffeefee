@@ -7,19 +7,21 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
-import com.google.firebase.auth.FirebaseAuth
+import com.eaor.coffeefee.viewmodels.AuthViewModel
 
 class SignInFragment : Fragment() {
+    private lateinit var viewModel: AuthViewModel
     private lateinit var emailEditText: EditText
     private lateinit var passwordEditText: EditText
     private lateinit var signInButton: Button
-    private lateinit var registerButton: Button
-    private lateinit var auth: FirebaseAuth
+    private lateinit var registerTextView: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -31,62 +33,60 @@ class SignInFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        // Initialize Firebase Auth
-        auth = FirebaseAuth.getInstance()
-
+        
+        // Initialize ViewModel
+        viewModel = ViewModelProvider(requireActivity())[AuthViewModel::class.java]
+        
         // Initialize views
         emailEditText = view.findViewById(R.id.etEmail)
         passwordEditText = view.findViewById(R.id.etPassword)
         signInButton = view.findViewById(R.id.btnSignIn)
-        registerButton = view.findViewById(R.id.tvRegister)
-
-        // Set click listeners
+        registerTextView = view.findViewById(R.id.tvRegister)
+        
         signInButton.setOnClickListener {
             val email = emailEditText.text.toString()
             val password = passwordEditText.text.toString()
-
-            if (validateInput(email, password)) {
-                signInWithEmailPassword(email, password)
+            
+            if (email.isNotEmpty() && password.isNotEmpty()) {
+                signIn(email, password)
+            } else {
+                Toast.makeText(context, "Please enter email and password", Toast.LENGTH_SHORT).show()
             }
         }
 
-        registerButton.setOnClickListener {
+        registerTextView.setOnClickListener {
             findNavController().navigate(R.id.action_signInFragment_to_registerFragment)
         }
+        
+        // Set up observers
+        setupObservers()
     }
-
-    private fun signInWithEmailPassword(email: String, password: String) {
-        signInButton.isEnabled = false // Disable button during authentication
-
-        auth.signInWithEmailAndPassword(email, password)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    // Sign in success, navigate to MainActivity
-                    val intent = Intent(activity, MainActivity::class.java)
-                    startActivity(intent)
-                    activity?.finish()
-                } else {
-                    // If sign in fails, display a message to the user
-                    Toast.makeText(
-                        context,
-                        "Authentication failed: ${task.exception?.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    signInButton.isEnabled = true
-                }
+    
+    private fun setupObservers() {
+        // Observe loading state
+        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
+            signInButton.isEnabled = !isLoading
+            // You could also show a progress indicator here
+        }
+        
+        // Observe error messages
+        viewModel.errorMessage.observe(viewLifecycleOwner) { error ->
+            error?.let {
+                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
             }
+        }
+        
+        // Observe current user
+        viewModel.currentUser.observe(viewLifecycleOwner) { user ->
+            if (user != null) {
+                // Navigate to MainActivity
+                startActivity(Intent(requireActivity(), MainActivity::class.java))
+                requireActivity().finish()
+            }
+        }
     }
 
-    private fun validateInput(email: String, password: String): Boolean {
-        if (email.isEmpty()) {
-            emailEditText.error = "Email cannot be empty"
-            return false
-        }
-        if (password.isEmpty()) {
-            passwordEditText.error = "Password cannot be empty"
-            return false
-        }
-        return true
+    private fun signIn(email: String, password: String) {
+        viewModel.signIn(email, password)
     }
 }

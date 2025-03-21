@@ -18,6 +18,9 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.util.Log
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import com.eaor.coffeefee.utils.CircleTransform
+import com.squareup.picasso.MemoryPolicy
+import com.squareup.picasso.NetworkPolicy
 
 class FeedAdapter(
     private val _feedItems: MutableList<FeedItem>, // Rename to _feedItems
@@ -66,7 +69,7 @@ class FeedAdapter(
         _feedItems.clear()
         _feedItems.addAll(newItems)
         notifyDataSetChanged()
-        Log.d("FeedAdapter", "Updated adapter with ${newItems.size} items")
+        Log.d("FeedAdapter", "Cleared and added ${newItems.size} items")
     }
 
     fun updateItems(newItems: List<FeedItem>) {
@@ -93,6 +96,29 @@ class FeedAdapter(
         Log.d("FeedAdapter", "Cleared all data from adapter")
     }
 
+    fun getItems(): List<FeedItem> {
+        return _feedItems.toList()
+    }
+
+    // Method to update user data in all posts
+    fun updateUserData(userId: String, userName: String, userPhotoUrl: String?) {
+        var updated = false
+        
+        // Update all posts by this user
+        for (i in _feedItems.indices) {
+            if (_feedItems[i].userId == userId) {
+                _feedItems[i].userName = userName
+                _feedItems[i].userPhotoUrl = userPhotoUrl
+                updated = true
+                notifyItemChanged(i)
+            }
+        }
+        
+        if (updated) {
+            Log.d("FeedAdapter", "Updated user data for user $userId in adapter")
+        }
+    }
+
     companion object {
         private const val PAYLOAD_COMMENT_COUNT = "payload_comment_count"
     }
@@ -112,27 +138,30 @@ class FeedAdapter(
         // Correct ImageView for post photo
         val coffeeImage: ImageView = itemView.findViewById(R.id.coffeeImage)
 
+        // Correct ImageView for user photo
+        val userPhoto: ImageView = itemView.findViewById(R.id.userAvatar)
+
         fun bind(feedItem: FeedItem) {
             userName.text = feedItem.userName
             locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load user profile photo with better logging
+            // Load user profile image using Picasso
             if (!feedItem.userPhotoUrl.isNullOrEmpty()) {
-                try {
-                    Log.d("FeedAdapter", "Loading profile image for ${feedItem.userName}: ${feedItem.userPhotoUrl}")
-                    Picasso.get()
-                        .load(feedItem.userPhotoUrl)
-                        .placeholder(R.drawable.ic_profile)
-                        .error(R.drawable.ic_profile)
-                        .into(userAvatar)
-                } catch (e: Exception) {
-                    Log.e("FeedAdapter", "Error loading profile image for ${feedItem.userName}: ${e.message}")
-                    userAvatar.setImageResource(R.drawable.ic_profile)
-                }
+                // Use Log to help debug the image loading
+                Log.d("FeedAdapter", "Loading profile image for ${feedItem.userName}: ${feedItem.userPhotoUrl}")
+                
+                // Use Picasso with no caching to ensure fresh images
+                Picasso.get()
+                    .load(feedItem.userPhotoUrl)
+                    .transform(CircleTransform())
+                    .placeholder(R.drawable.default_avatar)
+                    .error(R.drawable.default_avatar)
+                    .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
+                    .networkPolicy(NetworkPolicy.NO_CACHE)
+                    .into(userPhoto)
             } else {
-                Log.d("FeedAdapter", "No profile image URL for ${feedItem.userName}")
-                userAvatar.setImageResource(R.drawable.ic_profile)
+                userPhoto.setImageResource(R.drawable.default_avatar)
             }
 
             // Load post photo
@@ -279,15 +308,18 @@ class FeedAdapter(
     override fun onBindViewHolder(holder: FeedViewHolder, position: Int) {
         val feedItem = _feedItems[position]
         
-        // Set user photo
+        // Set user photo with Picasso for consistent handling and no cache
         if (!feedItem.userPhotoUrl.isNullOrEmpty()) {
             Picasso.get()
                 .load(feedItem.userPhotoUrl)
-                .placeholder(R.drawable.ic_profile)
-                .error(R.drawable.ic_profile)
-                .into(holder.userAvatar)
+                .transform(CircleTransform())
+                .placeholder(R.drawable.default_avatar)
+                .error(R.drawable.default_avatar)
+                .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
+                .networkPolicy(NetworkPolicy.NO_CACHE)
+                .into(holder.userPhoto)
         } else {
-            holder.userAvatar.setImageResource(R.drawable.ic_profile)
+            holder.userPhoto.setImageResource(R.drawable.default_avatar)
         }
         
         holder.bind(feedItem)

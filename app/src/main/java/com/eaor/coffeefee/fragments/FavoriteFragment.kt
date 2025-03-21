@@ -9,8 +9,10 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.CoffeeShopAdapter
 import com.eaor.coffeefee.models.CoffeeShop
@@ -77,6 +79,7 @@ class FavoriteFragment : Fragment() {
                     
                     withContext(Dispatchers.Main) {
                         adapter = CoffeeShopAdapter(favoriteCoffeeShops, showCaptions = false)
+                        setupAdapterClickListener(adapter)
                         recyclerView.adapter = adapter
                     }
                 }
@@ -84,5 +87,30 @@ class FavoriteFragment : Fragment() {
                 Log.e("FavoriteFragment", "Error loading favorite coffee shops", e)
             }
         }
+    }
+    
+    private fun setupAdapterClickListener(adapter: CoffeeShopAdapter) {
+        adapter.setOnItemClickListener { coffeeShop ->
+            val bundle = Bundle().apply {
+                putString("name", coffeeShop.name)
+                putString("description", coffeeShop.caption)
+                putFloat("latitude", coffeeShop.latitude.toFloat())
+                putFloat("longitude", coffeeShop.longitude.toFloat())
+                putString("placeId", coffeeShop.placeId)
+                coffeeShop.photoUrl?.let { putString("photoUrl", it) }
+                coffeeShop.rating?.let { putFloat("rating", it) }
+                coffeeShop.address?.let { putString("address", it) }
+                
+                // Add source fragment ID
+                putInt("source_fragment_id", R.id.favoriteFragment)
+            }
+            findNavController().navigate(R.id.action_favoriteFragment_to_coffeeFragment, bundle)
+        }
+    }
+    
+    override fun onDestroyView() {
+        super.onDestroyView()
+        
+        // Navigation component handles back stack management automatically
     }
 }

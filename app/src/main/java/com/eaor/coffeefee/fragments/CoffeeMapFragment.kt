@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.CoffeeShop
 import com.eaor.coffeefee.repositories.CoffeeShopRepository
@@ -107,6 +108,10 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // Hide bottom navigation when this fragment is displayed
+        val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_nav)
+        bottomNav?.visibility = View.GONE
 
         // Get selected coffee shop from arguments if available
         arguments?.let { args ->
@@ -333,5 +338,13 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
         } else {
             Toast.makeText(requireContext(), "Could not find location coordinates", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onDestroyView() {
+        // Restore bottom navigation visibility when leaving this fragment
+        val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_nav)
+        bottomNav?.visibility = View.VISIBLE
+        
+        super.onDestroyView()
     }
 }

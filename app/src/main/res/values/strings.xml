@@ -10,4 +10,10 @@
     <string name="rating_icon">Rating icon</string>
     <string name="search_coffee_shops">Search coffee shops</string>
     <string name="arrow_icon">Navigate to details</string>
+    <string name="back">Back</string>
+    <string name="coffee_shop_image">Coffee shop image</string>
+    <string name="rating">Rating</string>
+    <string name="location">Location</string>
+    <string name="show_on_map">Show on Map</string>
+    <string name="nearby_coffee_shops">Nearby Coffee Shops</string>
 </resources>

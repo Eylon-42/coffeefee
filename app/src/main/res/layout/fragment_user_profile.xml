@@ -2,8 +2,10 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/white">
 
     <include
         android:id="@+id/toolbar"
@@ -14,59 +16,121 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <LinearLayout
-        android:id="@+id/userInfoLayout"
+    <!-- Profile Header Section with Card View -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/profileCardView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="16dp"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="4dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <ImageView
-            android:id="@+id/userAvatar"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:src="@drawable/ic_profile"
-            android:scaleType="centerInside"
-            android:padding="2dp"
-            android:background="@drawable/circle_background"/>
-
-        <LinearLayout
-            android:layout_width="0dp"
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="16dp">
+            android:padding="16dp">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/userAvatar"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:src="@drawable/default_avatar"
+                android:scaleType="centerCrop"
+                android:padding="2dp"
+                app:strokeColor="@color/white"
+                app:strokeWidth="3dp"
+                app:shapeAppearanceOverlay="@style/CircularImageView"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                android:elevation="4dp" />
 
             <TextView
                 android:id="@+id/userName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="8dp"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                android:maxLines="1"
+                android:ellipsize="end"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toEndOf="@id/userAvatar"
+                app:layout_constraintEnd_toStartOf="@id/editButton"
+                tools:text="John Doe" />
+
+            <TextView
+                android:id="@+id/userEmail"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="4dp"
+                android:textSize="14sp"
+                android:textColor="@android:color/darker_gray"
+                android:maxLines="1"
+                android:ellipsize="end"
+                app:layout_constraintTop_toBottomOf="@id/userName"
+                app:layout_constraintStart_toEndOf="@id/userAvatar"
+                app:layout_constraintEnd_toStartOf="@id/editButton"
+                tools:text="john.doe@example.com" />
+
+            <TextView
+                android:id="@+id/joinDateLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="20sp"
-                android:textStyle="bold"/>
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="12dp"
+                android:text="Member since"
+                android:textSize="12sp"
+                android:textColor="@android:color/darker_gray"
+                app:layout_constraintTop_toBottomOf="@id/userEmail"
+                app:layout_constraintStart_toEndOf="@id/userAvatar" />
 
+            <TextView
+                android:id="@+id/joinDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textSize="12sp"
+                android:textStyle="italic"
+                android:textColor="@android:color/darker_gray"
+                app:layout_constraintTop_toTopOf="@id/joinDateLabel"
+                app:layout_constraintStart_toEndOf="@id/joinDateLabel"
+                tools:text="Jan 2023" />
 
-        </LinearLayout>
+            <ImageButton
+                android:id="@+id/editButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_more_vert"
+                android:padding="6dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                android:contentDescription="Edit options"/>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
 
-        <ImageButton
-            android:id="@+id/editButton"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_more_vert"
-            android:contentDescription="Edit options"/>
-    </LinearLayout>
-
+    <!-- Posts Header -->
     <TextView
-        android:id="@+id/postsTitle"
+        android:id="@+id/postsHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Posts"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:layout_margin="16dp"
-        app:layout_constraintTop_toBottomOf="@id/userInfoLayout"
-        app:layout_constraintStart_toStartOf="parent"/>
+        android:textColor="@color/black"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="24dp"
+        app:layout_constraintTop_toBottomOf="@id/profileCardView"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <!-- RecyclerView for posts -->
     <androidx.recyclerview.widget.RecyclerView
@@ -74,7 +138,10 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/postsTitle"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/postsHeader"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
     <!-- No posts available message -->
@@ -85,11 +152,9 @@
         android:text="No posts available"
         android:textSize="16sp"
         android:textColor="@android:color/darker_gray"
-        android:layout_centerInParent="true"
         android:visibility="gone"
-    android:layout_marginTop="20dp"
-    app:layout_constraintTop_toBottomOf="@id/postsTitle"
-    app:layout_constraintStart_toStartOf="parent"
-    app:layout_constraintEnd_toEndOf="parent" />
-
+        app:layout_constraintTop_toBottomOf="@id/postsHeader"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -14,7 +14,11 @@
             app:destination="@id/commentsFragment" />
         <action
             android:id="@+id/action_feedFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment" />
+            app:destination="@id/coffeeFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
         <action
             android:id="@+id/action_feedFragment_to_addPostFragment"
             app:destination="@id/addPostFragment" />
@@ -29,7 +33,11 @@
             app:destination="@id/coffeeMapFragment" />
         <action
             android:id="@+id/action_searchFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment" />
+            app:destination="@id/coffeeFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
     </fragment>
 
     <fragment
@@ -38,7 +46,11 @@
         android:label="Favorite">
         <action
             android:id="@+id/action_favoriteFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment" />
+            app:destination="@id/coffeeFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
     </fragment>
 
     <fragment
@@ -50,7 +62,18 @@
             app:destination="@id/profileFragment"/>
         <action
             android:id="@+id/action_userProfileFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment"/>
+            app:destination="@id/coffeeFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+        <action
+            android:id="@+id/action_userProfileFragment_to_editPostFragment"
+            app:destination="@id/editPostFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
     </fragment>
 
     <fragment
@@ -70,7 +93,11 @@
         tools:layout="@layout/fragment_coffee">
         <action
             android:id="@+id/action_coffeeFragment_to_coffeeMapFragment"
-            app:destination="@id/coffeeMapFragment" />
+            app:destination="@id/coffeeMapFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
         <argument
             android:name="name"
             app:argType="string" />
@@ -91,12 +118,12 @@
             app:destination="@id/profileFragment" />
         <action
             android:id="@+id/action_userProfileFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment" />
+            app:destination="@id/coffeeFragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
     </fragment>
-
-    <action
-        android:id="@+id/action_userProfileFragment_to_editPostFragment"
-        app:destination="@id/editPostFragment" />
 
     <fragment
         android:id="@+id/editPostFragment"

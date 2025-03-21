@@ -7,6 +7,10 @@ import android.graphics.Paint
 import android.graphics.Shader
 import com.squareup.picasso.Transformation
 
+/**
+ * Transforms images into perfect circles for use with Picasso.
+ * This is a backup if the ShapeableImageView's cornerSize is not working properly.
+ */
 class CircleTransform : Transformation {
     override fun transform(source: Bitmap): Bitmap {
         val size = Math.min(source.width, source.height)

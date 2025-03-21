@@ -1,5 +1,6 @@
 package com.eaor.coffeefee.adapters
 
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,9 +16,22 @@ class CoffeeShopAdapter(
     private val showCaptions: Boolean = false
 ) : RecyclerView.Adapter<CoffeeShopAdapter.ViewHolder>() {
 
-    private var filteredCoffeeShops = coffeeShops.toList()
+    // Define listener interface
+    interface ShopListener {
+        fun onShopClicked(shop: CoffeeShop)
+    }
 
-    // Add click listener
+    // Constructor with context and listener
+    constructor(
+        context: Context,
+        coffeeShops: List<CoffeeShop>,
+        listener: ShopListener
+    ) : this(coffeeShops, true) {
+        this.listener = listener
+    }
+
+    private var filteredCoffeeShops = coffeeShops.toList()
+    private var listener: ShopListener? = null
     private var onItemClick: ((CoffeeShop) -> Unit)? = null
 
     fun setOnItemClickListener(listener: (CoffeeShop) -> Unit) {
@@ -43,57 +57,69 @@ class CoffeeShopAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val coffeeShop = filteredCoffeeShops[position]
-        holder.shopName.text = coffeeShop.name
+        val shop = filteredCoffeeShops[position]
+        
+        holder.shopName.text = shop.name
+        holder.caption.visibility = if (showCaptions) View.VISIBLE else View.GONE
         
         if (showCaptions) {
-            holder.caption.visibility = View.VISIBLE
-            holder.caption.text = coffeeShop.caption
-        } else {
-            holder.caption.visibility = View.GONE
+            holder.caption.text = shop.caption
         }
-
+        
+        // Set up rating hearts
+        setupRatingHearts(holder, shop.rating)
+        
         // Set click listener
         holder.itemView.setOnClickListener {
-            onItemClick?.invoke(coffeeShop)
+            listener?.onShopClicked(shop) ?: onItemClick?.invoke(shop)
         }
-
-        // Update rating hearts
-        coffeeShop.rating?.let { rating ->
-            val flooredRating = rating.toInt()
-            val hasHalf = (rating - flooredRating) >= 0.5
-
-            holder.ratingHearts.forEachIndexed { index, heart ->
-                val resource = when {
-                    index < flooredRating -> R.drawable.ic_heart_filled
-                    index == flooredRating && hasHalf -> R.drawable.ic_heart_half
-                    else -> R.drawable.ic_heart_outline
+    }
+    
+    private fun setupRatingHearts(holder: ViewHolder, rating: Float?) {
+        // Reset all hearts to empty
+        for (heart in holder.ratingHearts) {
+            heart.setImageResource(R.drawable.ic_heart_outline)
+            heart.setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.coffee_primary))
+        }
+        
+        if (rating != null && rating > 0) {
+            val fullHearts = rating.toInt()
+            val hasHalfHeart = (rating - fullHearts) >= 0.5f
+            
+            // Fill the appropriate hearts
+            for (i in holder.ratingHearts.indices) {
+                when {
+                    i < fullHearts -> {
+                        holder.ratingHearts[i].setImageResource(R.drawable.ic_heart_filled)
+                    }
+                    i == fullHearts && hasHalfHeart -> {
+                        holder.ratingHearts[i].setImageResource(R.drawable.ic_heart_half)
+                    }
+                    else -> {
+                        // Leave as outline
+                    }
                 }
-                heart.setImageResource(resource)
-                heart.setColorFilter(
-                    ContextCompat.getColor(heart.context, R.color.coffee_primary)
-                )
+                holder.ratingHearts[i].setColorFilter(ContextCompat.getColor(holder.itemView.context, R.color.coffee_primary))
             }
         }
     }
 
-    override fun getItemCount() = filteredCoffeeShops.size
-
-    fun filter(query: String) {
-        filteredCoffeeShops = if (query.isEmpty()) {
-            coffeeShops
-        } else {
-            coffeeShops.filter {
-                it.name.contains(query, ignoreCase = true) ||
-                it.caption.contains(query, ignoreCase = true)
-            }
-        }
-        notifyDataSetChanged()
-    }
-
+    override fun getItemCount(): Int = filteredCoffeeShops.size
+    
     fun updateData(newData: List<CoffeeShop>) {
         coffeeShops = newData
         filteredCoffeeShops = newData
+        notifyDataSetChanged()
+    }
+    
+    fun filter(query: String) {
+        if (query.isEmpty()) {
+            filteredCoffeeShops = coffeeShops
+        } else {
+            filteredCoffeeShops = coffeeShops.filter { 
+                it.name.contains(query, ignoreCase = true) 
+            }
+        }
         notifyDataSetChanged()
     }
 }

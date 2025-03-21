@@ -14,16 +14,20 @@ import androidx.fragment.app.Fragment
 import com.eaor.coffeefee.R
 import android.widget.ImageButton
 import androidx.navigation.fragment.findNavController
+import androidx.navigation.fragment.NavHostFragment
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import android.widget.ImageView
 import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.data.AppDatabase
 import com.eaor.coffeefee.data.User
 import com.eaor.coffeefee.repository.UserRepository
+import com.eaor.coffeefee.viewmodels.UserViewModel
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -42,6 +46,9 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Shader
 import android.graphics.BitmapShader
+import android.content.Intent
+import android.content.Context
+import com.eaor.coffeefee.repository.FeedRepository
 
 class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var bottomNav: View
@@ -55,6 +62,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var changePhotoText: TextView
     private var selectedImageUri: Uri? = null
     private lateinit var storage: FirebaseStorage
+    private lateinit var viewModel: UserViewModel
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -67,17 +75,21 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                 .fit()
                 .centerInside()
                 .transform(CircleTransform())
-                .placeholder(R.drawable.ic_profile)
-                .error(R.drawable.ic_profile)
+                .placeholder(R.drawable.default_avatar)
+                .error(R.drawable.default_avatar)
                 .into(profileImageView)
             
             // Show a checkmark or indicator that a new image has been selected
             changePhotoText.text = "New photo selected"
-            changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_accent))
+            changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_primary))
             
-            // Hide the URL field since we're using the image picker
+            // Hide the URL field but keep the email note visible
             view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
-            view?.findViewById<TextView>(R.id.photoUrlLabel)?.visibility = GONE
+            
+            // Hide the email note
+            view?.findViewById<TextView>(R.id.photoUrlLabel)?.apply {
+                visibility = GONE
+            }
         }
     }
 
@@ -88,22 +100,37 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         auth = FirebaseAuth.getInstance()
         val db = FirebaseFirestore.getInstance()
         storage = FirebaseStorage.getInstance()
-        val userDao = AppDatabase.getDatabase(requireContext()).userDao()
+        val appDatabase = AppDatabase.getDatabase(requireContext())
+        val userDao = appDatabase.userDao()
+        val feedItemDao = appDatabase.feedItemDao()
         userRepository = UserRepository(userDao, db)
+        val feedRepository = FeedRepository(feedItemDao, db)
+        
+        // Initialize ViewModel
+        viewModel = ViewModelProvider(this)[UserViewModel::class.java]
+        viewModel.initialize(userRepository, feedRepository)
         
         // Initialize views
         bottomNav = requireActivity().findViewById(R.id.bottom_nav)
         editUserName = view.findViewById(R.id.editUserName)
         editUserEmail = view.findViewById(R.id.editUserEmail)
-        profileImageView = view.findViewById(R.id.profileImage)
+        profileImageView = view.findViewById(R.id.profileImageView)
         saveButton = view.findViewById(R.id.saveButton)
         progressBar = view.findViewById(R.id.progressBar)
         changePhotoText = view.findViewById(R.id.changePhotoText)
-        val userNameDisplay = view.findViewById<TextView>(R.id.userNameDisplay)
 
         // Initially hide progress bar
         progressBar.visibility = GONE
         
+        // Disable email field as we're not allowing email changes
+        editUserEmail.isEnabled = false
+        editUserEmail.alpha = 0.5f
+        
+        // Remove the note about email changes not being allowed
+        view.findViewById<TextView>(R.id.photoUrlLabel)?.apply {
+            visibility = GONE
+        }
+
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
@@ -115,8 +142,17 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             findNavController().navigateUp()
         }
 
+        // Set up observers
+        setupObservers()
+        
         // Load user data
-        loadUserData(userNameDisplay)
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            viewModel.getUserData(userId)
+        } else {
+            Toast.makeText(context, "Error: Not logged in", Toast.LENGTH_SHORT).show()
+            findNavController().navigateUp()
+        }
 
         // Set up keyboard visibility listener
         view.viewTreeObserver.addOnGlobalLayoutListener {
@@ -130,6 +166,78 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         }
 
         setupClickListeners()
+    }
+    
+    private fun setupObservers() {
+        // Observe user data using LiveData following MVVM pattern
+        // The UI reactively updates when the ViewModel's LiveData changes
+        viewModel.userData.observe(viewLifecycleOwner) { user ->
+            user?.let {
+                Log.d("ProfileFragment", "Received user data update from LiveData: ${it.name}")
+                editUserName.setText(it.name)
+                editUserEmail.setText(it.email)
+                
+                // Keep the photo URL field hidden
+                view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
+                
+                // Hide the email note
+                view?.findViewById<TextView>(R.id.photoUrlLabel)?.apply {
+                    visibility = GONE
+                }
+
+                // Set default text for change photo
+                changePhotoText.text = "Tap to change profile photo"
+                changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_primary))
+                changePhotoText.visibility = VISIBLE
+
+                // Load profile picture if exists
+                if (!it.profilePhotoUrl.isNullOrEmpty()) {
+                    Picasso.get()
+                        .load(it.profilePhotoUrl)
+                        .fit()
+                        .centerInside()
+                        .transform(CircleTransform())
+                        .placeholder(R.drawable.default_avatar)
+                        .error(R.drawable.default_avatar)
+                        .into(profileImageView)
+                } else {
+                    // User has no profile image, set default
+                    profileImageView.setImageResource(R.drawable.default_avatar)
+                }
+            }
+        }
+        
+        // Observe other LiveData from the ViewModel
+        // This is a key part of the MVVM architecture where the UI observes data changes
+        
+        // Observe loading state
+        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
+            progressBar.visibility = if (isLoading) VISIBLE else GONE
+            saveButton.isEnabled = !isLoading
+            
+            Log.d("ProfileFragment", "Loading state changed: $isLoading")
+        }
+        
+        // Observe error messages
+        viewModel.errorMessage.observe(viewLifecycleOwner) { errorMessage ->
+            errorMessage?.let {
+                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                viewModel.clearError()
+            }
+        }
+        
+        // Observe upload progress
+        viewModel.uploadProgress.observe(viewLifecycleOwner) { progress ->
+            progressBar.progress = progress
+        }
+        
+        // Observe update success
+        viewModel.updateSuccess.observe(viewLifecycleOwner) { success ->
+            if (success) {
+                Toast.makeText(context, "Profile updated successfully", Toast.LENGTH_SHORT).show()
+                findNavController().navigateUp()
+            }
+        }
     }
 
     private fun setupClickListeners() {
@@ -148,213 +256,116 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         }
     }
 
-    private fun loadUserData(userNameDisplay: TextView) {
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                try {
-                    val user = userRepository.getUserData(currentUser.uid)
-                    user?.let {
-                        editUserName.setText(it.name)
-                        editUserEmail.setText(it.email)
-                        
-                        // Hide URL fields since we're using image picker
-                        view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
-                        view?.findViewById<TextView>(R.id.photoUrlLabel)?.visibility = GONE
-
-                        // Set default text for change photo
-                        changePhotoText.text = "Tap to change profile photo"
-                        changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_primary))
-                        changePhotoText.visibility = VISIBLE
-
-                        // Load profile picture if exists
-                        if (!it.profilePictureUrl.isNullOrEmpty()) {
-                            Picasso.get()
-                                .load(it.profilePictureUrl)
-                                .fit()
-                                .centerInside()
-                                .transform(CircleTransform())
-                                .placeholder(R.drawable.ic_profile)
-                                .error(R.drawable.ic_profile)
-                                .into(profileImageView)
-                        } else {
-                            // Set default profile image
-                            profileImageView.setImageResource(R.drawable.ic_profile)
-                        }
-
-                        userNameDisplay.text = it.name
-                    }
-                } catch (e: Exception) {
-                    Log.e("ProfileFragment", "Error loading user data: ${e.message}")
-                    Toast.makeText(context, "Error loading user data: ${e.message}", Toast.LENGTH_SHORT).show()
-                    
-                    // Set default profile image in case of error
-                    profileImageView.setImageResource(R.drawable.ic_profile)
-                }
-            }
-        }
-    }
-
     private fun saveUserData() {
-        val currentUser = auth.currentUser ?: return
         val newName = editUserName.text.toString().trim()
-        val newEmail = editUserEmail.text.toString().trim()
+        // Get current email from the field, but we won't actually change it
+        val currentEmail = editUserEmail.text.toString().trim()
+
+        Log.d("ProfileFragment", "Saving user data: name=$newName")
 
         if (newName.isBlank()) {
             editUserName.error = "Name cannot be empty"
             return
         }
 
-        if (newEmail.isBlank()) {
-            editUserEmail.error = "Email cannot be empty"
-            return
-        }
-
-        // Disable save button and show progress
-        saveButton.isEnabled = false
-        progressBar.visibility = VISIBLE
-        
         // Show loading message
         Toast.makeText(context, "Saving profile...", Toast.LENGTH_SHORT).show()
 
-        // If a new image was selected, upload it to Firebase Storage
+        // If a new image was selected, upload it first
         if (selectedImageUri != null) {
-            uploadImageToFirebaseStorage(currentUser.uid, selectedImageUri!!)
+            Log.d("ProfileFragment", "Uploading new profile image")
+            
+            // Hide the URL field
+            view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
+            
+            // Use modified method that passes name and current email
+            selectedImageUri?.let { uri ->
+                uploadProfileImageWithUserData(uri, newName, currentEmail)
+            }
         } else {
-            // No new image selected, just update the user data
-            updateUserData(currentUser.uid, newName, newEmail, null)
-        }
-    }
-    
-    private fun uploadImageToFirebaseStorage(userId: String, imageUri: Uri) {
-        try {
-            // Compress the image before uploading
-            val inputStream = requireContext().contentResolver.openInputStream(imageUri)
-            val originalBitmap = BitmapFactory.decodeStream(inputStream)
-            
-            // Apply circle transformation to the bitmap before uploading
-            val circularBitmap = createCircularBitmap(originalBitmap)
-            
-            val baos = ByteArrayOutputStream()
-            
-            // Compress the circular image to JPEG with 80% quality
-            circularBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos)
-            val compressedData = baos.toByteArray()
-            
-            // Create a unique filename with timestamp
-            val timestamp = System.currentTimeMillis()
-            val filename = "profile_${timestamp}_${UUID.randomUUID()}.jpg"
-            
-            // Create a reference to 'Users/userId/profile_timestamp_uuid.jpg'
-            val storageRef = storage.reference.child("Users").child(userId).child(filename)
-            
-            // Upload the compressed image
-            val uploadTask = storageRef.putBytes(compressedData)
-            
-            // Register observers to listen for when the upload is done or if it fails
-            uploadTask.addOnFailureListener { exception ->
-                // Handle unsuccessful uploads
-                Log.e("ProfileFragment", "Failed to upload image: ${exception.message}")
-                Toast.makeText(context, "Failed to upload image: ${exception.message}", Toast.LENGTH_SHORT).show()
-                saveButton.isEnabled = true
-                progressBar.visibility = GONE
-            }.addOnSuccessListener { taskSnapshot ->
-                // Get the download URL
-                storageRef.downloadUrl.addOnSuccessListener { uri ->
-                    val imageUrl = uri.toString()
-                    Log.d("ProfileFragment", "Image uploaded successfully. URL: $imageUrl")
-                    
-                    // Now update the user data with the new image URL
-                    val newName = editUserName.text.toString().trim()
-                    val newEmail = editUserEmail.text.toString().trim()
-                    updateUserData(userId, newName, newEmail, imageUrl)
-                }.addOnFailureListener { exception ->
-                    Log.e("ProfileFragment", "Failed to get download URL: ${exception.message}")
-                    Toast.makeText(context, "Failed to get download URL: ${exception.message}", Toast.LENGTH_SHORT).show()
-                    saveButton.isEnabled = true
-                    progressBar.visibility = GONE
-                }
-            }.addOnProgressListener { taskSnapshot ->
-                // Show upload progress
-                val progress = (100.0 * taskSnapshot.bytesTransferred / taskSnapshot.totalByteCount).toInt()
-                progressBar.progress = progress
-            }
-            
-            // Clean up bitmaps
-            originalBitmap.recycle()
-            circularBitmap.recycle()
-            
-        } catch (e: Exception) {
-            Log.e("ProfileFragment", "Error processing image: ${e.message}")
-            Toast.makeText(context, "Error processing image: ${e.message}", Toast.LENGTH_SHORT).show()
-            saveButton.isEnabled = true
-            progressBar.visibility = GONE
-        }
-    }
-    
-    // Helper method to create a circular bitmap
-    private fun createCircularBitmap(bitmap: Bitmap): Bitmap {
-        val size = Math.min(bitmap.width, bitmap.height)
-        val x = (bitmap.width - size) / 2
-        val y = (bitmap.height - size) / 2
-        
-        // Create a square bitmap from the source image
-        val squaredBitmap = Bitmap.createBitmap(bitmap, x, y, size, size)
-        
-        // Create a new bitmap with transparent background
-        val config = bitmap.config ?: Bitmap.Config.ARGB_8888
-        val circularBitmap = Bitmap.createBitmap(size, size, config)
-        
-        // Draw the circular shape
-        val canvas = Canvas(circularBitmap)
-        val paint = Paint()
-        val shader = BitmapShader(squaredBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        paint.shader = shader
-        paint.isAntiAlias = true
-        
-        val radius = size / 2f
-        canvas.drawCircle(radius, radius, radius, paint)
-        
-        // Clean up the squared bitmap if it's different from the source
-        if (squaredBitmap != bitmap) {
-            squaredBitmap.recycle()
+            Log.d("ProfileFragment", "Updating user data without new image")
+            // No new image, just update the name (email will remain unchanged in ViewModel)
+            viewModel.updateUserData(newName, currentEmail)
         }
         
-        return circularBitmap
+        // Notify all listening ViewModels that profile has been updated
+        // This helps ensure all UI components showing user data get refreshed
+        notifyProfileUpdated()
     }
-    
-    private fun updateUserData(userId: String, name: String, email: String, profilePictureUrl: String?) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                // Get current user data to preserve any fields we're not updating
-                val currentUser = userRepository.getUserData(userId)
-                
-                // Create updated user object
-                val updatedUser = User(
-                    uid = userId,
-                    name = name,
-                    email = email,
-                    profilePictureUrl = profilePictureUrl ?: currentUser?.profilePictureUrl
-                )
 
-                // Update Firestore and Room
-                val success = userRepository.updateUser(updatedUser)
-                if (success) {
-                    Log.d("ProfileFragment", "Profile updated successfully")
-                    Toast.makeText(context, "Profile updated successfully", Toast.LENGTH_SHORT).show()
-                    findNavController().navigateUp()
-                } else {
-                    Log.e("ProfileFragment", "Failed to update profile")
-                    Toast.makeText(context, "Failed to update profile", Toast.LENGTH_SHORT).show()
-                    saveButton.isEnabled = true
-                    progressBar.visibility = GONE
-                }
-            } catch (e: Exception) {
-                Log.e("ProfileFragment", "Error updating profile: ${e.message}")
-                Toast.makeText(context, "Error updating profile: ${e.message}", Toast.LENGTH_SHORT).show()
-                saveButton.isEnabled = true
-                progressBar.visibility = GONE
+    /**
+     * Notify the app that the user profile has been updated
+     * This will help refresh comments and other UI elements showing user data
+     */
+    private fun notifyProfileUpdated() {
+        try {
+            // This will broadcast a message that can be observed by other components
+            val intent = Intent("com.eaor.coffeefee.PROFILE_UPDATED")
+            intent.putExtra("userId", auth.currentUser?.uid)
+            
+            // Use the appropriate API based on Android version
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // For Android 13+, specify broadcast flags
+                requireContext().sendBroadcast(intent, null)
+            } else {
+                // For older Android versions
+                requireContext().sendBroadcast(intent)
             }
+            
+            Log.d("ProfileFragment", "Broadcast profile updated event")
+        } catch (e: Exception) {
+            Log.e("ProfileFragment", "Error broadcasting profile update: ${e.message}")
+        }
+    }
+
+    // Helper method to handle image upload with name and email
+    private fun uploadProfileImageWithUserData(imageUri: Uri, name: String, email: String) {
+        val userId = auth.currentUser?.uid ?: return
+        
+        // Show progress indicators
+        progressBar.visibility = VISIBLE
+        saveButton.isEnabled = false
+        
+        // Create a unique filename
+        val timestamp = System.currentTimeMillis()
+        val filename = "profile_${timestamp}_${UUID.randomUUID()}.jpg"
+        
+        // Get a reference to Firebase Storage
+        val storageRef = storage.reference.child("Users").child(userId).child(filename)
+        
+        // Start the upload
+        val uploadTask = storageRef.putFile(imageUri)
+        
+        // Monitor progress
+        uploadTask.addOnProgressListener { taskSnapshot ->
+            val progress = (100.0 * taskSnapshot.bytesTransferred / taskSnapshot.totalByteCount).toInt()
+            progressBar.progress = progress
+        }
+        
+        // Handle completion
+        uploadTask.continueWithTask { task ->
+            if (!task.isSuccessful) {
+                throw task.exception ?: Exception("Unknown error during upload")
+            }
+            storageRef.downloadUrl
+        }.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val downloadUrl = task.result.toString()
+                Log.d("ProfileFragment", "Image uploaded successfully. URL: $downloadUrl")
+                
+                // Now update the user data with all fields
+                viewModel.updateUserData(name, email, downloadUrl)
+            } else {
+                Log.e("ProfileFragment", "Upload failed: ${task.exception?.message}")
+                Toast.makeText(context, "Failed to upload image: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                progressBar.visibility = View.GONE
+                saveButton.isEnabled = true
+            }
+        }.addOnFailureListener { e ->
+            Log.e("ProfileFragment", "Upload failed: ${e.message}")
+            Toast.makeText(context, "Upload failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            progressBar.visibility = View.GONE
+            saveButton.isEnabled = true
         }
     }
 
@@ -362,5 +373,6 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         super.onDestroyView()
         // Ensure bottom nav is visible when leaving the fragment
         bottomNav.visibility = VISIBLE
+        // No navigation handling needed
     }
 }

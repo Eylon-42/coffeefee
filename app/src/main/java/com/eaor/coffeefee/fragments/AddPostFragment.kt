@@ -482,5 +482,6 @@ class AddPostFragment : Fragment() {
         super.onDestroyView()
         // Restore the visibility of the bottom navigation bar when the fragment is destroyed
         bottomNav.visibility = View.VISIBLE
+        // No navigation handling needed
     }
 }

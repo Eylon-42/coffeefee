@@ -1,13 +1,14 @@
 package com.eaor.coffeefee.models
 
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.PropertyName
 import com.google.gson.annotations.SerializedName
 
 data class FeedItem(
     var id: String = "",
-    @field:SerializedName("UserId")
+    @PropertyName("UserId")
     val userId: String = "",
-    val userName: String = "",
+    var userName: String = "",
     val experienceDescription: String = "",
     val location: Location? = null,
     val photoUrl: String? = null,
@@ -58,7 +59,7 @@ data class FeedItem(
     fun toMap(): Map<String, Any?> {
         return hashMapOf(
             "id" to id,
-            "userId" to userId,
+            "UserId" to userId,  // Use uppercase in Firestore
             "userName" to userName,
             "experienceDescription" to experienceDescription,
             "location" to location?.let {

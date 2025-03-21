@@ -17,6 +17,7 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.CoffeeShopAdapter
 import com.eaor.coffeefee.models.CoffeeShop
@@ -74,6 +75,9 @@ class SearchFragment : Fragment() {
                 coffeeShop.photoUrl?.let { putString("photoUrl", it) }
                 coffeeShop.rating?.let { putFloat("rating", it) }
                 coffeeShop.address?.let { putString("address", it) }
+                
+                // Add source fragment ID
+                putInt("source_fragment_id", R.id.searchFragment)
             }
             findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
         }
@@ -141,25 +145,29 @@ class SearchFragment : Fragment() {
         super.onDestroyView()
         // Ensure bottom nav is visible when leaving the fragment
         bottomNav.visibility = View.VISIBLE
+        // No navigation handling needed
     }
 
     private fun setupSearchView(searchView: SearchView) {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
-                query?.let { searchCoffeeShops(it) }
+                query?.let { performSearch(it) }
                 return true
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                newText?.let { searchCoffeeShops(it) }
+                newText?.let { performSearch(it) }
                 return true
             }
         })
     }
 
-    private fun searchCoffeeShops(query: String) {
-        // Log the search attempt
-        Log.d("SearchFragment", "Searching for: '$query'")
+    private fun performSearch(query: String) {
+        if (query.isEmpty()) {
+            // If empty query, load all coffee shops
+            loadCoffeeShops()
+            return
+        }
         
         scope.launch {
             try {
@@ -226,6 +234,9 @@ class SearchFragment : Fragment() {
                 coffeeShop.photoUrl?.let { putString("photoUrl", it) }
                 coffeeShop.rating?.let { putFloat("rating", it) }
                 coffeeShop.address?.let { putString("address", it) }
+                
+                // Add source fragment ID
+                putInt("source_fragment_id", R.id.searchFragment)
             }
             findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
         }

@@ -97,11 +97,23 @@ class EditPostFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Hide bottom navigation when this fragment is displayed
+        val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_nav)
+        bottomNav?.visibility = View.GONE
+
         db = FirebaseFirestore.getInstance()
         
         setupToolbar(view)
         loadPostData(view)
         setupButtons(view)
+    }
+
+    override fun onDestroyView() {
+        // Restore bottom navigation visibility when leaving this fragment
+        val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_nav)
+        bottomNav?.visibility = View.VISIBLE
+        
+        super.onDestroyView()
     }
 
     private fun setupToolbar(view: View) {

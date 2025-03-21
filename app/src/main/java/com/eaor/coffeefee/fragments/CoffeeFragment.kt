@@ -1,8 +1,4 @@
 package com.eaor.coffeefee.fragments
-import com.squareup.picasso.Callback
-import com.squareup.picasso.MemoryPolicy
-import com.squareup.picasso.NetworkPolicy
-import com.squareup.picasso.Picasso
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -14,7 +10,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.ImageView
-import android.widget.RatingBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,28 +17,21 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
-import com.eaor.coffeefee.adapters.CoffeeShopAdapter
 import com.eaor.coffeefee.models.CoffeeShop
-import com.eaor.coffeefee.repositories.CoffeeShopRepository
+import com.eaor.coffeefee.viewmodels.CoffeeViewModel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
+import com.squareup.picasso.Picasso
 
 class CoffeeFragment : Fragment(), OnMapReadyCallback {
+    private lateinit var coffeeViewModel: CoffeeViewModel
     private var coffeeName: String = ""
     private var coffeeLatitude: Float = 0f
     private var coffeeLongitude: Float = 0f
@@ -53,13 +41,12 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
     private var placeId: String? = null
     private var photoUrl: String? = null
     private var rating: Float? = null
-    private val repository = CoffeeShopRepository.getInstance()
-    private val scope = CoroutineScope(Dispatchers.Main)
-    private val db = FirebaseFirestore.getInstance()
-    private val auth = FirebaseAuth.getInstance()
-    private lateinit var adapter: CoffeeShopAdapter
-    private var recyclerView: RecyclerView? = null
     private lateinit var coffeeImage: ImageView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        coffeeViewModel = ViewModelProvider(this)[CoffeeViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -67,7 +54,6 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.fragment_coffee, container, false)
-        recyclerView = view.findViewById(R.id.recyclerView)
         return view
     }
 
@@ -89,7 +75,6 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             val address = args.getString("address")
             val imageUrl = args.getString("imageUrl", "")
 
-           
             view.findViewById<TextView>(R.id.toolbarTitle).text = coffeeName.takeIf { it.isNotEmpty() } 
                 ?: "Unnamed Coffee Shop"
             view.findViewById<TextView>(R.id.coffeeName).text = coffeeName.takeIf { it.isNotEmpty() } 
@@ -123,23 +108,25 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             findNavController().navigate(R.id.action_coffeeFragment_to_coffeeMapFragment, bundle)
         }
 
-        setupRecyclerView()
         loadMissingDetails()
+        setupObservers()
     }
 
     private fun setupToolbar(view: View) {
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         (requireActivity() as AppCompatActivity).setSupportActionBar(toolbar)
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
-
+        
+        // Set the toolbar title
+        view.findViewById<TextView>(R.id.toolbarTitle).text = coffeeName.takeIf { it.isNotEmpty() } 
+            ?: "Unnamed Coffee Shop"
+        
+        // Set up back button manually
         view.findViewById<ImageButton>(R.id.backButton).setOnClickListener {
             findNavController().navigateUp()
         }
     }
 
-    /**
-     * Loads the coffee shop photo with enhanced caching and error handling
-     */
     private fun loadCoffeeShopPhoto(view: View) {
         val coffeeImage = view.findViewById<ImageView>(R.id.coffeeImage)
 
@@ -149,15 +136,11 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
                 
                 Picasso.get()
                     .load(photoUrl)
-                    .placeholder(R.drawable.placeholder)  // Use placeholder.jpg directly
-                    .error(R.drawable.placeholder)        // Use placeholder.jpg directly
-                    .fit()
-                    .centerCrop()
+                    .placeholder(R.drawable.placeholder)
+                    .error(R.drawable.placeholder)
                     .into(coffeeImage)
             } else {
                 Log.d("CoffeeFragment", "No photo URL available, showing placeholder")
-                
-                // Directly set the placeholder image
                 coffeeImage.setImageResource(R.drawable.placeholder)
             }
         } catch (e: Exception) {
@@ -221,63 +204,35 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    private fun setupRecyclerView() {
-        recyclerView?.let { rv ->
-            rv.layoutManager = LinearLayoutManager(context)
-            adapter = CoffeeShopAdapter(emptyList(), showCaptions = true)
-            adapter.setOnItemClickListener { coffeeShop ->
-                val bundle = Bundle().apply {
-                    putString("placeId", coffeeShop.placeId)
-                    putString("name", coffeeShop.name)
-                    putString("photoUrl", coffeeShop.photoUrl)
-                    coffeeShop.rating?.let { putFloat("rating", it) }
-                }
-
-                findNavController().navigate(
-                    R.id.action_coffeeFragment_to_coffeeMapFragment,
-                    bundle
-                )
-            }
-            rv.adapter = adapter
-        }
-    }
-
     private fun loadMissingDetails() {
         if (placeId != null) {
-            // If we have placeId, use it directly
-            scope.launch {
-                try {
-                    val coffeeShop = repository.getCoffeeShop(placeId!!)
-                    if (coffeeShop != null) {
-                        withContext(Dispatchers.Main) {
-                            updateUIWithCoffeeShop(coffeeShop)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("CoffeeFragment", "Error loading details by placeId", e)
-                    // Fallback to name search if placeId fails
-                    loadDetailsByName()
-                }
-            }
-        } else {
+            // If we have placeId, use it to get coffee shop details
+            coffeeViewModel.getCoffeeShopByPlaceId(placeId!!)
+        } else if (coffeeName.isNotEmpty()) {
             // Fallback to name search if no placeId
-            loadDetailsByName()
+            coffeeViewModel.getCoffeeShopByName(coffeeName)
         }
     }
 
-    private fun loadDetailsByName() {
-        if (coffeeName.isNotEmpty()) {
-            scope.launch {
-                try {
-                    val coffeeShop = repository.getCoffeeShopByName(coffeeName)
-                    if (coffeeShop != null) {
-                        withContext(Dispatchers.Main) {
-                            updateUIWithCoffeeShop(coffeeShop)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("CoffeeFragment", "Error loading details by name", e)
-                }
+    private fun setupObservers() {
+        // Observe selected coffee shop
+        coffeeViewModel.selectedCoffeeShop.observe(viewLifecycleOwner) { coffeeShop ->
+            coffeeShop?.let {
+                updateUIWithCoffeeShop(it)
+            }
+        }
+        
+        // Observe loading state
+        coffeeViewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
+            // Show/hide loading indicator if needed
+            view?.findViewById<View>(R.id.loadingView)?.visibility = 
+                if (isLoading) View.VISIBLE else View.GONE
+        }
+        
+        // Observe error messages
+        coffeeViewModel.errorMessage.observe(viewLifecycleOwner) { errorMessage ->
+            errorMessage?.let {
+                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -288,10 +243,12 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
         rating = coffeeShop.rating
         
         // Update UI with new details
-        setupRatingDisplay(requireView(), rating)
-        loadCoffeeShopPhoto(requireView())
-        view?.findViewById<TextView>(R.id.coffeeAddress)?.text = 
-            coffeeShop.address ?: "Address not available"
+        view?.let { v ->
+            setupRatingDisplay(v, rating)
+            loadCoffeeShopPhoto(v)
+            v.findViewById<TextView>(R.id.coffeeAddress)?.text = 
+                coffeeShop.address ?: "Address not available"
+        }
     }
 
     private fun updateCoffeeShopInfo(view: View) {

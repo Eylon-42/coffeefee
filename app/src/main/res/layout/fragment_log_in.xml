@@ -101,9 +101,6 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- Sign In Button -->
-
-        <!-- Forgot Password -->
-
         <Button
             android:id="@+id/btnSignIn"
             android:layout_width="0dp"
@@ -116,21 +113,6 @@
             app:layout_constraintHorizontal_bias="0.666"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tilPassword" />
-
-        <Button
-            android:id="@+id/tvForgotPassword"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Forgot Password?"
-            android:textColor="@android:color/black"
-            android:textAppearance="@style/TextAppearance.MaterialComponents.Body2"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="@android:color/transparent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/btnSignIn" />
 
         <!-- Register Option -->
         <Button
@@ -146,7 +128,7 @@
             android:focusable="true"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tvForgotPassword" />
+            app:layout_constraintTop_toBottomOf="@id/btnSignIn" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </ScrollView>

@@ -1,22 +1,25 @@
 package com.eaor.coffeefee.models
 
 data class Comment(
-    val id: String = "", // Firestore document ID
-    val postId: String = "", // ID of the post the comment belongs to
-    val userId: String = "", // ID of the user who made the comment
-    val text: String = "", // The content of the comment
-    val timestamp: Long = System.currentTimeMillis(), // Timestamp of when the comment was made
-    var userName: String = "", // Transient field, not stored in Firestore
-    var userPhotoUrl: String? = null // Transient field, not stored in Firestore
+    val id: String,
+    val postId: String,
+    val userId: String,
+    val text: String,
+    val timestamp: Long,
+    var userName: String = "", // Temporary field used only for display
+    var userPhotoUrl: String? = null // Temporary field used only for display
 ) {
-    // Convert to HashMap for Firestore - only store essential fields
     fun toMap(): Map<String, Any> {
-        return hashMapOf(
-            "id" to id,
-            "postId" to postId,
-            "userId" to userId,
-            "text" to text,
-            "timestamp" to timestamp
-        )
+        val map = HashMap<String, Any>()
+        map["id"] = id
+        map["postId"] = postId
+        map["userId"] = userId
+        map["text"] = text
+        map["timestamp"] = timestamp
+        
+        // Don't store userName and userPhotoUrl in Firestore anymore
+        // since they will be loaded from Users collection
+        
+        return map
     }
 }
