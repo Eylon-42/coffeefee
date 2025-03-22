@@ -2,6 +2,7 @@ package com.eaor.coffeefee.fragments
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,10 +12,15 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.eaor.coffeefee.R
+import com.eaor.coffeefee.utils.VertexAIService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class GetToKnowYouFragment : Fragment() {
     private lateinit var coffeeDrinkEditText: EditText
@@ -25,6 +31,7 @@ class GetToKnowYouFragment : Fragment() {
     private lateinit var backButton: View
     private lateinit var auth: FirebaseAuth
     private lateinit var db: FirebaseFirestore
+    private val vertexAIService = VertexAIService.getInstance()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -96,19 +103,39 @@ class GetToKnowYouFragment : Fragment() {
 
         // Prepare data in the required format
         val userDetails = hashMapOf(
-                "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
-                "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
-                "preferredAtmosphere" to atmosphereEditText.text.toString(),
-                "locationPreference" to locationPreferenceEditText.text.toString()
+            "favoriteCoffeeDrink" to coffeeDrinkEditText.text.toString(),
+            "dietaryNeeds" to dietaryNeedsEditText.text.toString(),
+            "preferredAtmosphere" to atmosphereEditText.text.toString(),
+            "locationPreference" to locationPreferenceEditText.text.toString()
         )
 
         // Save to Firebase
         db.collection("Users")
             .document(userId)
-            .update("preferences",userDetails)
+            .update("preferences", userDetails)
             .addOnSuccessListener {
-                // Navigate to sign-in fragment after saving
-                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+                // After saving user details, generate AI tags based on user preferences
+                generateAITags(userDetails) { generatedTags ->
+                    if (generatedTags.isNotEmpty()) {
+                        // Save the generated tags to the user's document
+                        db.collection("Users")
+                            .document(userId)
+                            .update("tags", generatedTags)
+                            .addOnSuccessListener {
+                                // Navigate to sign-in fragment after saving the tags
+                                findNavController().navigate(R.id.action_getToKnowYouFragment_to_signInFragment)
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(
+                                    context,
+                                    "Failed to save tags: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                    } else {
+                        Toast.makeText(context, "Failed to generate tags", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .addOnFailureListener { e ->
                 Toast.makeText(
@@ -117,6 +144,50 @@ class GetToKnowYouFragment : Fragment() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+    }
+
+    private fun generateAITags(userDetails: Map<String, String>, callback: (List<String>) -> Unit) {
+        lifecycleScope.launch {
+            try {
+                val favoriteDrink = userDetails["favoriteCoffeeDrink"] ?: ""
+                val dietaryNeeds = userDetails["dietaryNeeds"] ?: ""
+                val atmosphere = userDetails["preferredAtmosphere"] ?: ""
+                val location = userDetails["locationPreference"] ?: ""
+                
+                // Use VertexAIService to generate tags from preferences
+                val result = vertexAIService.generateTagsFromPreferences(
+                    favoriteDrink = favoriteDrink,
+                    dietaryNeeds = dietaryNeeds,
+                    atmosphere = atmosphere,
+                    location = location
+                )
+                
+                result.fold(
+                    onSuccess = { tags ->
+                        Log.d("GetToKnowYouFragment", "Successfully generated tags: $tags")
+                        withContext(Dispatchers.Main) {
+                            callback(tags)
+                        }
+                    },
+                    onFailure = { error ->
+                        Log.e("GetToKnowYouFragment", "Failed to generate tags", error)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                requireContext(),
+                                "Could not generate preferences: ${error.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            callback(emptyList())
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("GetToKnowYouFragment", "Error in generateAITags", e)
+                withContext(Dispatchers.Main) {
+                    callback(emptyList())
+                }
+            }
+        }
     }
 
     private fun validateAnswers(): Boolean {
@@ -142,5 +213,9 @@ class GetToKnowYouFragment : Fragment() {
 
     private fun isValidAnswer(input: String): Boolean {
         return input.isNotEmpty()
+    }
+    
+    companion object {
+        private const val TAG = "GetToKnowYouFragment"
     }
 }

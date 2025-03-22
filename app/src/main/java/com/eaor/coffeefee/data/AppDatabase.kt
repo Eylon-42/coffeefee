@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
 @Database(
     entities = [
@@ -12,9 +13,10 @@ import androidx.room.RoomDatabase
         CommentEntity::class,
         CoffeeShopEntity::class
     ], 
-    version = 7, 
+    version = 8, 
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun feedItemDao(): FeedItemDao
@@ -37,6 +39,11 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE = instance
                 instance
             }
+        }
+
+        // Alias for getInstance for code consistency
+        fun getInstance(context: Context): AppDatabase {
+            return getDatabase(context)
         }
 
         fun clearDatabase(context: Context) {

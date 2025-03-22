@@ -59,12 +59,13 @@ class CoffeeShopRepository private constructor(context: Context) {
                     val coffeeShop = CoffeeShop(
                         name = data?.get("name") as? String ?: "",
                         rating = (data?.get("rating") as? Double)?.toFloat() ?: 0f,
-                        description = data?.get("caption") as? String ?: "",
+                        description = data?.get("description") as? String ?: "",
                         latitude = (data?.get("latitude") as? Double) ?: 0.0,
                         longitude = (data?.get("longitude") as? Double) ?: 0.0,
                         placeId = placeId,
                         photoUrl = data?.get("photoUrl") as? String,
-                        address = data?.get("address") as? String
+                        address = data?.get("address") as? String,
+                        tags = data?.get("tags") as? List<String> ?: emptyList()
                     )
                     
                     // Update the cache with fresh data
@@ -119,12 +120,13 @@ class CoffeeShopRepository private constructor(context: Context) {
                         CoffeeShop(
                             name = document.getString("name") ?: "",
                             rating = document.getDouble("rating")?.toFloat(),
-                            description = document.getString("caption") ?: "",
+                            description = document.getString("description") ?: "",
                             latitude = document.getDouble("latitude") ?: 0.0,
                             longitude = document.getDouble("longitude") ?: 0.0,
                             address = document.getString("address"),
                             photoUrl = document.getString("photoUrl"),
-                            placeId = document.id
+                            placeId = document.id,
+                            tags = document.get("tags") as? List<String> ?: emptyList()
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Error mapping document: ${document.id}", e)
@@ -250,12 +252,13 @@ class CoffeeShopRepository private constructor(context: Context) {
                     CoffeeShop(
                         name = data["name"] as? String ?: "",
                         rating = (data["rating"] as? Double)?.toFloat() ?: 0f,
-                        description = data["caption"] as? String ?: "",
+                        description = data["description"] as? String ?: "",
                         latitude = shopLat,
                         longitude = shopLng,
                         placeId = document.id,
                         photoUrl = data["photoUrl"] as? String,
-                        address = data["address"] as? String
+                        address = data["address"] as? String,
+                        tags = data["tags"] as? List<String> ?: emptyList()
                     )
                 } else null
             }
@@ -272,11 +275,12 @@ class CoffeeShopRepository private constructor(context: Context) {
                             placeId = document.id,
                             name = data["name"] as? String ?: "",
                             rating = (data["rating"] as? Double)?.toFloat() ?: 0f,
-                            description = data["caption"] as? String ?: "",
+                            description = data["description"] as? String ?: "",
                             latitude = shopLat,
                             longitude = shopLng,
                             address = data["address"] as? String,
-                            photoUrl = data["photoUrl"] as? String
+                            photoUrl = data["photoUrl"] as? String,
+                            tags = data["tags"] as? List<String> ?: emptyList()
                         )
                     }
                     coffeeShopDao.insertCoffeeShops(entities)
@@ -341,12 +345,13 @@ class CoffeeShopRepository private constructor(context: Context) {
                 val coffeeShop = CoffeeShop(
                     name = data?.get("name") as? String ?: "",
                     rating = (data?.get("rating") as? Double)?.toFloat() ?: 0f,
-                    description = data?.get("caption") as? String ?: "",
+                    description = data?.get("description") as? String ?: "",
                     latitude = (data?.get("latitude") as? Double) ?: 0.0,
                     longitude = (data?.get("longitude") as? Double) ?: 0.0,
                     placeId = document.id,
                     photoUrl = data?.get("photoUrl") as? String,
-                    address = data?.get("address") as? String
+                    address = data?.get("address") as? String,
+                    tags = data?.get("tags") as? List<String> ?: emptyList()
                 )
                 
                 // Update the cache with fresh data
@@ -389,12 +394,13 @@ class CoffeeShopRepository private constructor(context: Context) {
                     CoffeeShop(
                         name = document.getString("name") ?: "",
                         rating = document.getDouble("rating")?.toFloat(),
-                        description = document.getString("caption") ?: "",
+                        description = document.getString("description") ?: "",
                         latitude = document.getDouble("latitude") ?: 0.0,
                         longitude = document.getDouble("longitude") ?: 0.0,
                         address = document.getString("address"),
                         photoUrl = document.getString("photoUrl"),
-                        placeId = document.id
+                        placeId = document.id,
+                        tags = document.get("tags") as? List<String> ?: emptyList()
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error mapping document: ${document.id}", e)
@@ -450,7 +456,8 @@ class CoffeeShopRepository private constructor(context: Context) {
                         latitude = 0.0,  // Default to 0,0 for products without location
                         longitude = 0.0,
                         photoUrl = doc.getString("imageUrl"),
-                        placeId = doc.id
+                        placeId = doc.id,
+                        tags = doc.get("tags") as? List<String> ?: emptyList()
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error mapping coffee document: ${e.message}")
@@ -498,7 +505,8 @@ class CoffeeShopRepository private constructor(context: Context) {
                             latitude = 0.0,  // Default to 0,0 for products without location
                             longitude = 0.0,
                             photoUrl = doc.getString("imageUrl"),
-                            placeId = doc.id
+                            placeId = doc.id,
+                            tags = doc.get("tags") as? List<String> ?: emptyList()
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Error mapping coffee document: ${e.message}")

@@ -13,8 +13,15 @@ import com.eaor.coffeefee.models.CoffeeShop
 
 class CoffeeShopAdapter(
     private var coffeeShops: List<CoffeeShop>,
-    private val showCaptions: Boolean = false
-) : RecyclerView.Adapter<CoffeeShopAdapter.ViewHolder>() {
+    private val showCaptions: Boolean = false,
+    private val viewType: Int = VIEW_TYPE_COFFEE_SHOP,
+    private val matchingReasonsMap: Map<String?, List<String>>? = null
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    companion object {
+        const val VIEW_TYPE_COFFEE_SHOP = 0
+        const val VIEW_TYPE_SUGGESTION = 1
+    }
 
     // Define listener interface
     interface ShopListener {
@@ -38,9 +45,9 @@ class CoffeeShopAdapter(
         onItemClick = listener
     }
 
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val shopName: TextView = view.findViewById(R.id.shopName)
-        val caption: TextView = view.findViewById(R.id.caption)
+    class CoffeeShopViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val shopName: TextView = view.findViewById(R.id.nameTextView)
+        val caption: TextView = view.findViewById(R.id.captionTextView)
         val ratingHearts: List<ImageView> = listOf(
             view.findViewById(R.id.heart1),
             view.findViewById(R.id.heart2),
@@ -50,24 +57,38 @@ class CoffeeShopAdapter(
         )
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_coffee_shop, parent, false)
-        return ViewHolder(view)
+    class SuggestionViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val coffeeName: TextView = view.findViewById(R.id.coffeeName)
+        val tagsChipGroup: com.google.android.material.chip.ChipGroup = view.findViewById(R.id.tagsChipGroup)
+        val suggestionReason: TextView = view.findViewById(R.id.suggestionReason)
     }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+    override fun getItemViewType(position: Int): Int {
+        return viewType
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return when (viewType) {
+            VIEW_TYPE_SUGGESTION -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_favorite_coffee, parent, false)
+                SuggestionViewHolder(view)
+            }
+            else -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_coffee_shop, parent, false)
+                CoffeeShopViewHolder(view)
+            }
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val shop = filteredCoffeeShops[position]
         
-        holder.shopName.text = shop.name
-        holder.caption.visibility = if (showCaptions) View.VISIBLE else View.GONE
-        
-        if (showCaptions) {
-            holder.caption.text = shop.description
+        when (holder) {
+            is CoffeeShopViewHolder -> bindCoffeeShopViewHolder(holder, shop)
+            is SuggestionViewHolder -> bindSuggestionViewHolder(holder, shop)
         }
-        
-        // Set up rating hearts
-        setupRatingHearts(holder, shop.rating)
         
         // Set click listener
         holder.itemView.setOnClickListener {
@@ -75,7 +96,76 @@ class CoffeeShopAdapter(
         }
     }
     
-    private fun setupRatingHearts(holder: ViewHolder, rating: Float?) {
+    private fun bindCoffeeShopViewHolder(holder: CoffeeShopViewHolder, coffeeShop: CoffeeShop) {
+        holder.shopName.text = coffeeShop.name
+        holder.caption.visibility = if (showCaptions) View.VISIBLE else View.GONE
+        
+        if (showCaptions) {
+            holder.caption.text = coffeeShop.address
+        }
+        
+        // Set up rating hearts
+        setupRatingHearts(holder, coffeeShop.rating)
+    }
+    
+    private fun bindSuggestionViewHolder(holder: SuggestionViewHolder, coffeeShop: CoffeeShop) {
+        holder.coffeeName.text = coffeeShop.name
+        
+        // Show address
+        holder.suggestionReason.text = coffeeShop.address
+        holder.suggestionReason.visibility = View.VISIBLE
+        
+        holder.tagsChipGroup.removeAllViews() // Clear existing chips
+        
+        if (coffeeShop.tags.isNotEmpty()) {
+            // Show up to 3 tags from the coffee shop object
+            val tagsToShow = coffeeShop.tags.take(3)
+            addTagsAsChips(holder.tagsChipGroup, tagsToShow, holder.itemView.context)
+            holder.tagsChipGroup.visibility = View.VISIBLE
+        } else {
+            // No tags to display
+            holder.tagsChipGroup.visibility = View.GONE
+        }
+    }
+    
+    private fun addTagsAsChips(
+        chipGroup: com.google.android.material.chip.ChipGroup,
+        tags: List<String>,
+        context: Context
+    ) {
+        chipGroup.visibility = View.VISIBLE
+        
+        for (tag in tags) {
+            val chip = com.google.android.material.chip.Chip(context).apply {
+                text = tag
+                isClickable = false
+                isCheckable = false
+                
+                // Apply custom styling
+                chipBackgroundColor = ContextCompat.getColorStateList(
+                    context,
+                    R.color.coffee_light
+                )
+                setTextColor(ContextCompat.getColor(context, R.color.coffee_primary_dark))
+                chipStrokeWidth = 0f
+                textSize = context.resources.getDimension(R.dimen.chip_text_size) / 
+                           context.resources.displayMetrics.density
+                
+                // Set more compact size
+                chipMinHeight = context.resources.getDimension(R.dimen.chip_min_height)
+                chipStartPadding = context.resources.getDimension(R.dimen.chip_padding) / 2
+                chipEndPadding = context.resources.getDimension(R.dimen.chip_padding) / 2
+                
+                // Make it more oval/rounded
+                shapeAppearanceModel = shapeAppearanceModel.toBuilder()
+                    .setAllCornerSizes(chipMinHeight / 2)
+                    .build()
+            }
+            chipGroup.addView(chip)
+        }
+    }
+    
+    private fun setupRatingHearts(holder: CoffeeShopViewHolder, rating: Float?) {
         // Reset all hearts to empty
         for (heart in holder.ratingHearts) {
             heart.setImageResource(R.drawable.ic_heart_outline)

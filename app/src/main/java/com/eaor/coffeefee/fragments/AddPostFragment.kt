@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +28,7 @@ import com.eaor.coffeefee.BuildConfig
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.ImageAdapter
+import com.eaor.coffeefee.utils.VertexAIService
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
@@ -41,6 +43,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.Arrays
 import java.util.UUID
@@ -59,6 +64,7 @@ class AddPostFragment : Fragment() {
     private var selectedPlacePhotoUrl: String? = null
     private var selectedPlaceDescription: String? = null
     private var selectedPlaceAddress: String? = null
+    private val vertexAIService = VertexAIService.getInstance()
 
     // Image picker result launcher
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -100,6 +106,9 @@ class AddPostFragment : Fragment() {
                     
                     // Fetch place details only once
                     fetchPlaceDetails(place.id)
+                    
+                    // Offer to generate a description based on the selected place
+                    showGenerateDescriptionOption()
                 }
             } else if (result.resultCode == Activity.RESULT_CANCELED) {
                 Log.d("AddPostFragment", "User canceled autocomplete")
@@ -110,6 +119,7 @@ class AddPostFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_add_post, container, false)
 
         // Initialize Firebase only once
+        auth = FirebaseAuth.getInstance()
         db = FirebaseFirestore.getInstance()
         
         // Initialize Places Client
@@ -180,10 +190,6 @@ class AddPostFragment : Fragment() {
     }
 
     private fun setupPostButton(view: View) {
-        // Initialize Firebase
-        auth = FirebaseAuth.getInstance()
-        db = FirebaseFirestore.getInstance()
-
         view.findViewById<Button>(R.id.postButton).setOnClickListener {
             // Check if fragment is attached before interacting with context
             if (isAdded) {
@@ -200,33 +206,147 @@ class AddPostFragment : Fragment() {
                     return@setOnClickListener
                 }
 
-                // If an image is selected, upload it
-                if (selectedImages.isNotEmpty()) {
-                    val imageUri = selectedImages[0] // Only one image can be in the list
-                    uploadImageToStorage(imageUri,
-                        onSuccess = { imageUrl ->
-                            // Now post the post with the image URL
-                            createPostInFirestore(experienceDescription, userId, imageUrl)
-                        },
-                        onFailure = { exception ->
-                            Log.e("AddPostFragment", "Image upload failed: ${exception.message}")
-                            Toast.makeText(requireContext(), "Image upload failed", Toast.LENGTH_SHORT).show()
-                        }
-                    )
+                // Show loading dialog
+                val progressDialog = android.app.ProgressDialog(context).apply {
+                    setMessage("Creating post...")
+                    setCancelable(false)
+                    show()
+                }
+
+                // Generate tags for the post using VertexAI
+                generateTags(experienceDescription) { tags ->
+                    // If an image is selected, upload it
+                    if (selectedImages.isNotEmpty()) {
+                        val imageUri = selectedImages[0] // Only one image can be in the list
+                        uploadImageToStorage(imageUri,
+                            onSuccess = { imageUrl ->
+                                createPostInFirestore(experienceDescription, userId, imageUrl, tags, progressDialog)
+                            },
+                            onFailure = { exception ->
+                                progressDialog.dismiss()
+                                Log.e("AddPostFragment", "Image upload failed: ${exception.message}")
+                                Toast.makeText(requireContext(), "Image upload failed", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    } else {
+                        // If no image is selected, just post without a photo
+                        createPostInFirestore(experienceDescription, userId, null, tags, progressDialog)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun showGenerateDescriptionOption() {
+        val generateDescBtn = view?.findViewById<Button>(R.id.generateDescriptionButton)
+        if (generateDescBtn != null) {
+            generateDescBtn.visibility = View.VISIBLE
+            generateDescBtn.setOnClickListener {
+                if (selectedPlaceName != null) {
+                    val descriptionBox = view?.findViewById<EditText>(R.id.experienceDescription)
+                    if (descriptionBox != null) {
+                        val currentText = descriptionBox.text.toString()
+                        generateDescription(currentText)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun generateDescription(userInput: String) {
+        val locationName = selectedPlaceName ?: "Unknown location"
+        
+        lifecycleScope.launch {
+            try {
+                // If user has provided some input, use it as a base for enhancement
+                val prompt = if (userInput.isNotEmpty()) {
+                    userInput
                 } else {
-                    // If no image is selected, just post without a photo
-                    createPostInFirestore(experienceDescription, userId, null)
+                    "I'm at a coffee shop"
+                }
+                
+                // Get tags (coffee-related and ambiance terms)
+                val tags = listOf("coffee", "cafe", locationName.split(" ")[0].lowercase())
+                
+                // Use VertexAI service to generate the description
+                val result = vertexAIService.generateCoffeeExperience(prompt, locationName, tags)
+                
+                result.fold(
+                    onSuccess = { generatedDescription ->
+                        // Update the description box
+                        view?.findViewById<EditText>(R.id.experienceDescription)?.setText(generatedDescription)
+                    },
+                    onFailure = { error ->
+                        Log.e("AddPostFragment", "Failed to generate description", error)
+                        Toast.makeText(
+                            requireContext(),
+                            "Couldn't generate description: ${error.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("AddPostFragment", "Error generating description", e)
+                Toast.makeText(
+                    requireContext(),
+                    "Error: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun generateTags(description: String, callback: (List<String>) -> Unit) {
+        lifecycleScope.launch {
+            try {
+                val result = vertexAIService.generateTags(description)
+                
+                result.fold(
+                    onSuccess = { tags ->
+                        withContext(Dispatchers.Main) {
+                            callback(tags)
+                        }
+                    },
+                    onFailure = { error ->
+                        Log.e("AddPostFragment", "Failed to generate tags", error)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                requireContext(),
+                                "Could not generate tags: ${error.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            callback(emptyList())
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("AddPostFragment", "Error generating tags", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        requireContext(),
+                        "Error: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    callback(emptyList())
                 }
             }
         }
     }
 
-    private fun createPostInFirestore(experienceDescription: String, userId: String?, imageUrl: String?) {
+    private fun createPostInFirestore(
+        experienceDescription: String,
+        userId: String?,
+        imageUrl: String?,
+        tags: List<String>,
+        progressDialog: android.app.ProgressDialog
+    ) {
         if (selectedLocation == null || selectedPlaceName == null) {
-            Toast.makeText(requireContext(), "Please select a coffee shop location", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Please select a coffee shop location", Toast.LENGTH_SHORT)
+                .show()
             return
         }
 
+        // Create the post data
         val postData = mapOf(
             "UserId" to userId,
             "experienceDescription" to experienceDescription,
@@ -242,77 +362,95 @@ class AddPostFragment : Fragment() {
             "commentCount" to 0,
             "likes" to listOf<String>()
         )
-
-        // Create coffee shop data
-        val coffeeShopData = hashMapOf(
-            "name" to selectedPlaceName,
-            "rating" to selectedPlaceRating,
-            "caption" to (selectedPlaceDescription ?: ""),
-            "latitude" to selectedLocation!!.latitude,
-            "longitude" to selectedLocation!!.longitude,
-            "placeId" to selectedPlaceId,
-            "photoUrl" to selectedPlacePhotoUrl,
-            "address" to (selectedPlaceAddress ?: "")
-        )
-
+        Log.d("AddPostFragment-Tags", "Post tags: $tags")
+        
         // First add the post
         db.collection("Posts")
             .add(postData)
-            .addOnSuccessListener { documentRef ->
-                Log.d("AddPostFragment", "Post added with ID: ${documentRef.id}")
-                
-                // Store post ID for reference
-                val postId = documentRef.id
-                
-                // Then add/update the coffee shop
-                db.collection("CoffeeShops")
-                    .document(selectedPlaceId!!)
-                    .set(coffeeShopData)
-                    .addOnSuccessListener {
-                        Log.d("AddPostFragment", "Coffee shop added successfully")
-                        
-                        // Notify that a post has been added with a broadcast
-                        try {
-                            val intent = Intent("com.eaor.coffeefee.POST_ADDED")
-                            intent.putExtra("postId", postId)
-                            // Add photo URL if available
-                            if (imageUrl != null) {
-                                intent.putExtra("photoUrl", imageUrl)
+            .addOnSuccessListener { documentReference ->
+                Log.d("AddPostFragment", "Post added with ID: ${documentReference.id}")
+
+                // Now check if the coffee shop exists
+                val coffeeShopRef = db.collection("CoffeeShops").document(selectedPlaceId!!)
+
+                coffeeShopRef.get().addOnSuccessListener { document ->
+                    if (document.exists()) {
+                        // Coffee shop exists, so merge the new tags with the existing tags
+                        val existingTags = document.get("tags") as? List<String> ?: listOf()
+                        val updatedTags = (existingTags + tags).distinct()  // Merge and remove duplicates
+
+                        // Update the coffee shop's tags field
+                        coffeeShopRef.update("tags", updatedTags)
+                            .addOnSuccessListener {
+                                Log.d("AddPostFragment", "Tags updated successfully")
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Post added and tags updated",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                findNavController().navigateUp()
+                                progressDialog.dismiss()
                             }
-                            
-                            // Send broadcast with appropriate API based on Android version
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                requireContext().sendBroadcast(intent, null)
-                            } else {
-                                requireContext().sendBroadcast(intent)
+                            .addOnFailureListener { e ->
+                                Log.e("AddPostFragment", "Error updating tags", e)
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Failed to update tags: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                progressDialog.dismiss()
                             }
-                            
-                            // Set global refresh flags
-                            com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                            
-                            Log.d("AddPostFragment", "Successfully sent POST_ADDED broadcast for postId: $postId")
-                        } catch (e: Exception) {
-                            Log.e("AddPostFragment", "Error sending broadcast: ${e.message}")
-                            // Ensure flags are set even if broadcast fails
-                            com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                        }
-                        
-                        // Invalidate Picasso cache for coffee shop photo
-                        if (selectedPlacePhotoUrl != null) {
-                            com.squareup.picasso.Picasso.get().invalidate(selectedPlacePhotoUrl)
-                        }
-                        
-                        Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
-                        findNavController().navigateUp()
+                    } else {
+                        // Coffee shop does not exist, so create a new document with tags
+                        val coffeeShopData = mapOf(
+                            "name" to selectedPlaceName,
+                            "rating" to selectedPlaceRating,
+                            "description" to (selectedPlaceDescription ?: "No available description"),
+                            "latitude" to selectedLocation!!.latitude,
+                            "longitude" to selectedLocation!!.longitude,
+                            "placeId" to selectedPlaceId,
+                            "photoUrl" to selectedPlacePhotoUrl,
+                            "address" to (selectedPlaceAddress ?: ""),
+                            "tags" to tags // Include tags here
+                        )
+
+                        // Create the new coffee shop document
+                        coffeeShopRef.set(coffeeShopData)
+                            .addOnSuccessListener {
+                                Log.d("AddPostFragment", "Coffee shop added successfully")
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Post added and coffee shop data saved",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                findNavController().navigateUp()
+                                progressDialog.dismiss()
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("AddPostFragment", "Error adding coffee shop", e)
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Failed to add coffee shop: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                progressDialog.dismiss()
+                            }
                     }
+                }
                     .addOnFailureListener { e ->
-                        Log.e("AddPostFragment", "Error adding coffee shop", e)
-                        Toast.makeText(requireContext(), "Failed to add coffee shop: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Log.e("AddPostFragment", "Error checking coffee shop existence", e)
+                        Toast.makeText(
+                            requireContext(),
+                            "Error checking coffee shop: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        progressDialog.dismiss()
                     }
             }
             .addOnFailureListener { exception ->
                 Log.e("AddPostFragment", "Error adding post: ${exception.message}")
                 Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
+                progressDialog.dismiss()
             }
     }
 
@@ -386,7 +524,7 @@ class AddPostFragment : Fragment() {
                     // Coffee shop already exists, use existing data
                     selectedPlaceRating = document.getDouble("rating")?.toFloat()
                     selectedPlacePhotoUrl = document.getString("photoUrl")
-                    selectedPlaceDescription = document.getString("caption")
+                    selectedPlaceDescription = document.getString("description")
                     selectedPlaceAddress = document.getString("address")
                     Log.d("AddPostFragment", "Using existing coffee shop data: ${document.data}")
                 } else {
@@ -421,26 +559,24 @@ class AddPostFragment : Fragment() {
             val place = response.place
             Log.d("AddPostFragment", "Successfully fetched place: ${place.name}")
             
+            // Get Google photo URL
             val photoMetadata = place.photoMetadatas?.firstOrNull()
             if (photoMetadata != null) {
-                // Instead of using direct URL, download and upload to Firebase Storage
-                Log.d("AddPostFragment", "Found photo for place: ${place.name}")
-                
                 // Create a FetchPhotoRequest
-                val photoRequest = FetchPhotoRequest.builder(photoMetadata)
-                    .setMaxWidth(800)
-                    .setMaxHeight(800)
-                    .build()
-                
-                // Fetch the photo
-                placesClient.fetchPhoto(photoRequest).addOnSuccessListener { fetchPhotoResponse ->
+                val photoRequest = FetchPhotoRequest.builder(photoMetadata).build()
+                MainActivity.placesClient.fetchPhoto(photoRequest).addOnSuccessListener { fetchPhotoResponse ->
+                    // Get the bitmap from the photo response
                     val bitmap = fetchPhotoResponse.bitmap
+                    Log.d("AddPostFragment", "Successfully fetched photo for place: ${place.name}")
                     
-                    // Upload the bitmap to Firebase Storage
-                    uploadPlaceImageToStorage(bitmap, placeId, place)
-                    
-                }.addOnFailureListener { exception ->
-                    Log.e("AddPostFragment", "Error fetching photo: ${exception.message}")
+                    // Upload to Firebase Storage and get URL
+                    uploadBitmapToFirebase(bitmap, placeId) { url ->
+                        // Now save coffee shop with the photo URL
+                        saveCoffeeShopWithPhotoUrl(place, placeId, url)
+                    }
+                }.addOnFailureListener { e ->
+                    // Handle photo fetch failure, but still save the coffee shop
+                    Log.e("AddPostFragment", "Error fetching place photo: ${e.message}")
                     saveCoffeeShopWithPhotoUrl(place, placeId, null)
                 }
             } else {
@@ -452,34 +588,30 @@ class AddPostFragment : Fragment() {
         }
     }
 
-    private fun uploadPlaceImageToStorage(bitmap: Bitmap, placeId: String, place: Place) {
-        // Convert bitmap to byte array
+    private fun uploadBitmapToFirebase(bitmap: Bitmap, placeId: String, callback: (String?) -> Unit) {
+        val storage = FirebaseStorage.getInstance()
+        val storageRef = storage.reference.child("coffee_shops/$placeId.jpg")
+        
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
-        val imageData = baos.toByteArray()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+        val data = baos.toByteArray()
         
-        // Reference to storage location
-        val storageRef = FirebaseStorage.getInstance().reference
-            .child("CoffeeShops")
-            .child("$placeId.jpg")
+        Log.d("AddPostFragment", "Uploading photo to Firebase for place ID: $placeId")
         
-        // Upload photo to Firebase Storage
-        val uploadTask = storageRef.putBytes(imageData)
-        uploadTask.addOnSuccessListener {
-            // Get the download URL
-            storageRef.downloadUrl.addOnSuccessListener { uri ->
-                val photoUrl = uri.toString()
-                Log.d("AddPostFragment", "Uploaded coffee shop image to Firebase Storage: $photoUrl")
-                
-                // Save coffee shop with the Firebase Storage URL
-                saveCoffeeShopWithPhotoUrl(place, placeId, photoUrl)
-            }.addOnFailureListener { e ->
-                Log.e("AddPostFragment", "Error getting download URL: ${e.message}")
-                saveCoffeeShopWithPhotoUrl(place, placeId, null)
+        storageRef.putBytes(data).continueWithTask { task ->
+            if (!task.isSuccessful) {
+                Log.e("AddPostFragment", "Error in upload task: ${task.exception?.message}")
+                throw task.exception ?: Exception("Upload failed")
             }
-        }.addOnFailureListener { e ->
-            Log.e("AddPostFragment", "Error uploading image to Firebase Storage: ${e.message}")
-            saveCoffeeShopWithPhotoUrl(place, placeId, null)
+            storageRef.downloadUrl
+        }.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                Log.d("AddPostFragment", "Successfully uploaded photo, URL: ${task.result}")
+                callback(task.result.toString())
+            } else {
+                Log.e("AddPostFragment", "Error uploading photo: ${task.exception?.message}")
+                callback(null)
+            }
         }
     }
 
@@ -488,8 +620,8 @@ class AddPostFragment : Fragment() {
         val coffeeShopData = hashMapOf(
             "name" to (place.name ?: "Unnamed Coffee Shop"),
             "rating" to place.rating?.toDouble(),
-            "caption" to (place.editorialSummary?.toString() 
-                ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"),
+            "description" to (place.editorialSummary?.toString() 
+                ?: "No available description"),
             "latitude" to (place.latLng?.latitude ?: 0.0),
             "longitude" to (place.latLng?.longitude ?: 0.0),
             "placeId" to placeId,
@@ -511,7 +643,7 @@ class AddPostFragment : Fragment() {
                 selectedPlaceRating = place.rating?.toFloat()
                 selectedPlacePhotoUrl = photoUrl
                 selectedPlaceDescription = place.editorialSummary?.toString() 
-                    ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"
+                    ?: "No available description"
                 selectedPlaceAddress = place.address ?: "Address not available"
             }
             .addOnFailureListener { e ->

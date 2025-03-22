@@ -203,7 +203,7 @@ class MapViewModel : BaseViewModel() {
                     val doc = result.documents.first()
                     val shop = CoffeeShop(
                         name = doc.getString("name") ?: "",
-                        description = doc.getString("caption") ?: "",
+                        description = doc.getString("description") ?: "",
                         rating = doc.getDouble("rating")?.toFloat(),
                         latitude = doc.getDouble("latitude") ?: 0.0,
                         longitude = doc.getDouble("longitude") ?: 0.0,

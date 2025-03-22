@@ -41,16 +41,12 @@
     </fragment>
 
     <fragment
-        android:id="@+id/favoriteFragment"
-        android:name="com.eaor.coffeefee.fragments.FavoriteFragment"
-        android:label="Favorite">
+        android:id="@+id/suggestionFragment"
+        android:name="com.eaor.coffeefee.fragments.SuggestionFragment"
+        android:label="suggestionS">
         <action
-            android:id="@+id/action_favoriteFragment_to_coffeeFragment"
-            app:destination="@id/coffeeFragment"
-            app:enterAnim="@anim/nav_default_enter_anim"
-            app:exitAnim="@anim/nav_default_exit_anim"
-            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
-            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+            android:id="@+id/action_suggestionFragment_to_coffeeFragment"
+            app:destination="@id/coffeeFragment" />
     </fragment>
 
     <fragment

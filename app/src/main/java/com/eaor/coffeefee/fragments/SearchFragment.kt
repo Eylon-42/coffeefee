@@ -91,25 +91,6 @@ class SearchFragment : Fragment() {
         return view
     }
 
-    private fun loadCoffeeShops() {
-        scope.launch {
-            try {
-                val coffeeShops = repository.getAllCoffeeShops()
-                withContext(Dispatchers.Main) {
-                    if (this@SearchFragment::adapter.isInitialized) {
-                        adapter.updateData(coffeeShops)
-                    } else {
-                        adapter = CoffeeShopAdapter(coffeeShops)
-                        view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
-                        setupAdapterClickListener()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SearchFragment", "Error loading coffee shops", e)
-            }
-        }
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         
@@ -186,7 +167,11 @@ class SearchFragment : Fragment() {
                         adapter.updateData(results)
                         Log.d("SearchFragment", "Updated adapter with ${results.size} results")
                     } else {
-                        adapter = CoffeeShopAdapter(results)
+                        adapter = CoffeeShopAdapter(
+                            results,
+                            showCaptions = true,
+                            viewType = CoffeeShopAdapter.VIEW_TYPE_COFFEE_SHOP
+                        )
                         view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
                         setupAdapterClickListener()
                         Log.d("SearchFragment", "Created new adapter with ${results.size} results")
@@ -244,6 +229,38 @@ class SearchFragment : Fragment() {
                 putInt("source_fragment_id", R.id.searchFragment)
             }
             findNavController().navigate(R.id.action_searchFragment_to_coffeeFragment, bundle)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Force refresh to get the latest coffee shops
+        loadCoffeeShops(forceRefresh = true)
+    }
+
+    private fun loadCoffeeShops(forceRefresh: Boolean = false) {
+        scope.launch {
+            try {
+                val shops = repository.getAllCoffeeShops(forceRefresh = forceRefresh)
+                withContext(Dispatchers.Main) {
+                    adapter = CoffeeShopAdapter(
+                        shops,
+                        showCaptions = true,
+                        viewType = CoffeeShopAdapter.VIEW_TYPE_COFFEE_SHOP
+                    )
+                    view?.findViewById<RecyclerView>(R.id.recyclerView)?.adapter = adapter
+                    setupAdapterClickListener()
+                    
+                    // Update empty state
+                    val emptyStateText = view?.findViewById<TextView>(R.id.emptyStateText)
+                    emptyStateText?.visibility = if (shops.isEmpty()) View.VISIBLE else View.GONE
+                }
+            } catch (e: Exception) {
+                Log.e("SearchFragment", "Error loading coffee shops", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(requireContext(), "Error loading coffee shops", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }

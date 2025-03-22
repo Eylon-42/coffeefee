@@ -250,6 +250,13 @@ class EditPostFragment : Fragment() {
             Toast.makeText(context, "Please enter a description", Toast.LENGTH_SHORT).show()
             return
         }
+        
+        // Show loading dialog
+        val progressDialog = android.app.ProgressDialog(context).apply {
+            setMessage("Updating post...")
+            setCancelable(false)
+            show()
+        }
 
         val updateData = hashMapOf<String, Any>(
             "experienceDescription" to updatedText
@@ -267,28 +274,29 @@ class EditPostFragment : Fragment() {
 
         // Handle image update
         if (imageUri != null) {
-            uploadImageAndUpdatePost(updateData)
+            uploadImageAndUpdatePost(updateData, progressDialog)
         } else {
-            updatePostInFirestore(updateData)
+            updatePostInFirestore(updateData, progressDialog)
         }
     }
 
-    private fun uploadImageAndUpdatePost(updateData: HashMap<String, Any>) {
+    private fun uploadImageAndUpdatePost(updateData: HashMap<String, Any>, progressDialog: android.app.ProgressDialog) {
         val storageRef = FirebaseStorage.getInstance().reference.child("post_images/$postId.jpg")
 
         storageRef.putFile(imageUri!!)
             .addOnSuccessListener {
                 storageRef.downloadUrl.addOnSuccessListener { uri ->
                     updateData["photoUrl"] = uri.toString()
-                    updatePostInFirestore(updateData)
+                    updatePostInFirestore(updateData, progressDialog)
                 }
             }
             .addOnFailureListener { e ->
+                progressDialog.dismiss()
                 Toast.makeText(context, "Error uploading image: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
-    private fun updatePostInFirestore(updateData: HashMap<String, Any>) {
+    private fun updatePostInFirestore(updateData: HashMap<String, Any>, progressDialog: android.app.ProgressDialog) {
         db.collection("Posts").document(postId)
             .update(updateData)
             .addOnSuccessListener {
@@ -296,23 +304,27 @@ class EditPostFragment : Fragment() {
                 
                 // Update coffee shop data if location changed
                 if (selectedLocation != null && selectedPlaceName != null && selectedPlaceId != null) {
-                    updateCoffeeShopData()
+                    updateCoffeeShopData(progressDialog)
                 } else {
                     // If no coffee shop update needed, send broadcast immediately
                     sendPostUpdatedBroadcast()
+                    progressDialog.dismiss()
+                    Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
+                    findNavController().navigateUp()
                 }
-                
-                Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
-                findNavController().navigateUp()
             }
             .addOnFailureListener { e ->
+                progressDialog.dismiss()
                 Toast.makeText(context, "Error updating post: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
     
-    private fun updateCoffeeShopData() {
+    private fun updateCoffeeShopData(progressDialog: android.app.ProgressDialog) {
         if (selectedPlaceId == null) {
             sendPostUpdatedBroadcast()
+            progressDialog.dismiss()
+            Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
+            findNavController().navigateUp()
             return
         }
         
@@ -320,14 +332,25 @@ class EditPostFragment : Fragment() {
             "name" to (selectedPlaceName ?: "Unnamed Coffee Shop"),
             "latitude" to (selectedLocation?.latitude ?: 0.0),
             "longitude" to (selectedLocation?.longitude ?: 0.0),
-            "placeId" to selectedPlaceId!!
+            "placeId" to selectedPlaceId!!,
+            "updatedAt" to FieldValue.serverTimestamp()
         )
         
         // Add optional fields if available
-        if (selectedPlaceRating != null) coffeeShopData["rating"] = selectedPlaceRating!!
-        if (selectedPlaceDescription != null) coffeeShopData["caption"] = selectedPlaceDescription!!
-        if (selectedPlacePhotoUrl != null) coffeeShopData["photoUrl"] = selectedPlacePhotoUrl!!
-        if (selectedPlaceAddress != null) coffeeShopData["address"] = selectedPlaceAddress!!
+        if (selectedPlaceRating != null) {
+            coffeeShopData["rating"] = selectedPlaceRating!!
+        }
+        
+        // Handle nullable strings with default values
+        val description = if (selectedPlaceDescription != null) selectedPlaceDescription!! else "No available description"
+        coffeeShopData["description"] = description
+        
+        val address = if (selectedPlaceAddress != null) selectedPlaceAddress!! else "Address not available"
+        coffeeShopData["address"] = address
+        
+        if (selectedPlacePhotoUrl != null) {
+            coffeeShopData["photoUrl"] = selectedPlacePhotoUrl!!
+        }
         
         // Update the coffee shop document
         db.collection("CoffeeShops")
@@ -342,11 +365,13 @@ class EditPostFragment : Fragment() {
                 }
                 
                 sendPostUpdatedBroadcast()
+                progressDialog.dismiss()
             }
             .addOnFailureListener { e ->
                 Log.e("EditPostFragment", "Error updating coffee shop: ${e.message}")
                 // Still send the broadcast even if coffee shop update fails
                 sendPostUpdatedBroadcast()
+                progressDialog.dismiss()
             }
     }
     
@@ -442,7 +467,7 @@ class EditPostFragment : Fragment() {
                 if (document.exists()) {
                     selectedPlaceRating = document.getDouble("rating")?.toFloat()
                     selectedPlacePhotoUrl = document.getString("photoUrl")
-                    selectedPlaceDescription = document.getString("caption")
+                    selectedPlaceDescription = document.getString("description")
                     selectedPlaceAddress = document.getString("address")
                     Log.d("EditPostFragment", "Using existing coffee shop data")
                 } else {
@@ -461,17 +486,29 @@ class EditPostFragment : Fragment() {
             // First, try to get photo from Google Places API
             fetchGooglePlacePhoto(selectedPlaceId!!) { photoUrl ->
                 // Now create the coffee shop with all data and fallbacks
-                val coffeeShopData = hashMapOf(
+                val coffeeShopData = hashMapOf<String, Any>(
                     "name" to (selectedPlaceName ?: "Unnamed Coffee Shop"),
-                    "rating" to selectedPlaceRating,
-                    "caption" to (selectedPlaceDescription ?: "Come visit our cozy coffee shop and enjoy a perfect cup of coffee!"),
                     "latitude" to (selectedLocation?.latitude ?: 0.0),
                     "longitude" to (selectedLocation?.longitude ?: 0.0),
-                    "placeId" to selectedPlaceId,
-                    "address" to (selectedPlaceAddress ?: "Address not available"),
-                    "photoUrl" to photoUrl,
+                    "placeId" to selectedPlaceId!!,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
+                
+                // Add optional fields if available
+                if (selectedPlaceRating != null) {
+                    coffeeShopData["rating"] = selectedPlaceRating!!
+                }
+                
+                // Handle nullable strings with default values
+                val description = if (selectedPlaceDescription != null) selectedPlaceDescription!! else "No available description"
+                coffeeShopData["description"] = description
+                
+                val address = if (selectedPlaceAddress != null) selectedPlaceAddress!! else "Address not available"
+                coffeeShopData["address"] = address
+                
+                if (photoUrl != null) {
+                    coffeeShopData["photoUrl"] = photoUrl
+                }
                 
                 // Save to Firestore
                 db.collection("CoffeeShops")

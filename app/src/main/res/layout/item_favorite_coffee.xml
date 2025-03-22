@@ -11,50 +11,46 @@
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:padding="16dp">
 
-        <!-- Coffee Shop Image -->
-        <ImageView
-            android:id="@+id/coffeeImage"
+        <!-- Coffee Name -->
+        <TextView
+            android:id="@+id/coffeeName"
             android:layout_width="0dp"
-            android:layout_height="200dp"
-            android:scaleType="centerCrop"
-            android:background="@android:color/darker_gray"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
-        <!-- Coffee Name and Favorite Button Container -->
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <!-- Tags ChipGroup -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/tagsChipGroup"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:padding="16dp"
-            app:layout_constraintTop_toBottomOf="@id/coffeeImage"
+            android:layout_marginTop="8dp"
+            app:chipSpacingHorizontal="2dp"
+            app:chipSpacingVertical="2dp"
+            app:singleLine="false"
+            app:layout_constraintTop_toBottomOf="@id/suggestionReason"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent">
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
-            <TextView
-                android:id="@+id/coffeeName"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:textSize="18sp"
-                android:textColor="@android:color/black"
-                android:layout_marginEnd="16dp"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toStartOf="@id/favoriteButton"/>
-
-            <ImageButton
-                android:id="@+id/favoriteButton"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_heart_filled"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"/>
-
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- Address display -->
+        <TextView
+            android:id="@+id/suggestionReason"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="14sp"
+            android:textColor="@android:color/darker_gray"
+            app:layout_constraintTop_toBottomOf="@id/coffeeName"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

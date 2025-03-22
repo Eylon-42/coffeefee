@@ -14,7 +14,8 @@ data class CoffeeShopEntity(
     val latitude: Double,
     val longitude: Double,
     val address: String?,
-    val photoUrl: String?
+    val photoUrl: String?,
+    val tags: List<String> = emptyList()
 ) {
     // Convert Entity to Model
     fun toCoffeeShop(): CoffeeShop {
@@ -26,7 +27,8 @@ data class CoffeeShopEntity(
             longitude = longitude,
             address = address,
             photoUrl = photoUrl,
-            placeId = placeId
+            placeId = placeId,
+            tags = tags
         )
     }
 
@@ -41,7 +43,8 @@ data class CoffeeShopEntity(
                 latitude = coffeeShop.latitude,
                 longitude = coffeeShop.longitude,
                 address = coffeeShop.address,
-                photoUrl = coffeeShop.photoUrl
+                photoUrl = coffeeShop.photoUrl,
+                tags = coffeeShop.tags
             )
         }
     }

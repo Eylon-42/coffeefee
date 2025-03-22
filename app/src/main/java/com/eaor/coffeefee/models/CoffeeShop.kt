@@ -8,5 +8,6 @@ data class CoffeeShop(
     val longitude: Double,
     var address: String? = null,
     var photoUrl: String? = null,  // URL of the main photo from Google Places
-    var placeId: String? = null    // Google Places ID for future reference
+    var placeId: String? = null,   // Google Places ID for future reference
+    var tags: List<String> = emptyList()
 ) 

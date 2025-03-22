@@ -34,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     private val tabDestinations = setOf(
         R.id.feedFragment,
         R.id.searchFragment,
-        R.id.favoriteFragment,
+        R.id.coffeeMapFragment,
         R.id.profileTab
     )
 

@@ -68,6 +68,14 @@
                 android:minHeight="100dp"
                 android:gravity="top"
                 android:padding="12dp"/>
+                
+            <Button
+                android:id="@+id/generateDescriptionButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Generate Description with AI"
+                android:visibility="gone"/>
 
             <Button
                 android:id="@+id/postButton"

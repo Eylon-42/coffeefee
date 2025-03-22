@@ -2,4 +2,8 @@
 <resources>
     <!-- Common dimensions -->
     <dimen name="comment_spacing">12dp</dimen>
+    <!-- Chip dimensions -->
+    <dimen name="chip_min_height">28dp</dimen>
+    <dimen name="chip_text_size">12sp</dimen>
+    <dimen name="chip_padding">8dp</dimen>
 </resources> 

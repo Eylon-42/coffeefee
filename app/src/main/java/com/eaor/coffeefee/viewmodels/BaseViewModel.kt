@@ -11,8 +11,8 @@ import com.google.firebase.firestore.FirebaseFirestore
  */
 abstract class BaseViewModel : ViewModel() {
     // Common Firebase instances
-    protected val auth = FirebaseAuth.getInstance()
-    protected val db = FirebaseFirestore.getInstance()
+    open val auth = FirebaseAuth.getInstance()
+    open val db = FirebaseFirestore.getInstance()
     
     // Common loading state
     private val _isLoading = MutableLiveData<Boolean>()
