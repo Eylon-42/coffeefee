@@ -1,6 +1,8 @@
 package com.eaor.coffeefee.fragments
 
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
@@ -11,35 +13,37 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.SearchView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.eaor.coffeefee.BuildConfig
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.ImageAdapter
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.net.FetchPhotoRequest
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import java.io.ByteArrayOutputStream
+import java.util.Arrays
 import java.util.UUID
-import com.google.android.libraries.places.api.net.FetchPhotoRequest
-import com.google.android.libraries.places.api.net.FetchPlaceRequest
-import com.eaor.coffeefee.MainActivity
 
 class AddPostFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -254,8 +258,11 @@ class AddPostFragment : Fragment() {
         // First add the post
         db.collection("Posts")
             .add(postData)
-            .addOnSuccessListener {
-                Log.d("AddPostFragment", "Post added with ID: ${it.id}")
+            .addOnSuccessListener { documentRef ->
+                Log.d("AddPostFragment", "Post added with ID: ${documentRef.id}")
+                
+                // Store post ID for reference
+                val postId = documentRef.id
                 
                 // Then add/update the coffee shop
                 db.collection("CoffeeShops")
@@ -263,6 +270,38 @@ class AddPostFragment : Fragment() {
                     .set(coffeeShopData)
                     .addOnSuccessListener {
                         Log.d("AddPostFragment", "Coffee shop added successfully")
+                        
+                        // Notify that a post has been added with a broadcast
+                        try {
+                            val intent = Intent("com.eaor.coffeefee.POST_ADDED")
+                            intent.putExtra("postId", postId)
+                            // Add photo URL if available
+                            if (imageUrl != null) {
+                                intent.putExtra("photoUrl", imageUrl)
+                            }
+                            
+                            // Send broadcast with appropriate API based on Android version
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                requireContext().sendBroadcast(intent, null)
+                            } else {
+                                requireContext().sendBroadcast(intent)
+                            }
+                            
+                            // Set global refresh flags
+                            com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                            
+                            Log.d("AddPostFragment", "Successfully sent POST_ADDED broadcast for postId: $postId")
+                        } catch (e: Exception) {
+                            Log.e("AddPostFragment", "Error sending broadcast: ${e.message}")
+                            // Ensure flags are set even if broadcast fails
+                            com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                        }
+                        
+                        // Invalidate Picasso cache for coffee shop photo
+                        if (selectedPlacePhotoUrl != null) {
+                            com.squareup.picasso.Picasso.get().invalidate(selectedPlacePhotoUrl)
+                        }
+                        
                         Toast.makeText(requireContext(), "Post added successfully", Toast.LENGTH_SHORT).show()
                         findNavController().navigateUp()
                     }
@@ -382,24 +421,26 @@ class AddPostFragment : Fragment() {
             val place = response.place
             Log.d("AddPostFragment", "Successfully fetched place: ${place.name}")
             
-            // Get Google photo URL
             val photoMetadata = place.photoMetadatas?.firstOrNull()
             if (photoMetadata != null) {
+                // Instead of using direct URL, download and upload to Firebase Storage
+                Log.d("AddPostFragment", "Found photo for place: ${place.name}")
+                
                 // Create a FetchPhotoRequest
-                val photoRequest = FetchPhotoRequest.builder(photoMetadata).build()
-                MainActivity.placesClient.fetchPhoto(photoRequest).addOnSuccessListener { fetchPhotoResponse ->
-                    // Get the bitmap from the photo response
+                val photoRequest = FetchPhotoRequest.builder(photoMetadata)
+                    .setMaxWidth(800)
+                    .setMaxHeight(800)
+                    .build()
+                
+                // Fetch the photo
+                placesClient.fetchPhoto(photoRequest).addOnSuccessListener { fetchPhotoResponse ->
                     val bitmap = fetchPhotoResponse.bitmap
-                    Log.d("AddPostFragment", "Successfully fetched photo for place: ${place.name}")
                     
-                    // Upload to Firebase Storage and get URL
-                    uploadBitmapToFirebase(bitmap, placeId) { url ->
-                        // Now save coffee shop with the photo URL
-                        saveCoffeeShopWithPhotoUrl(place, placeId, url)
-                    }
-                }.addOnFailureListener { e ->
-                    // Handle photo fetch failure, but still save the coffee shop
-                    Log.e("AddPostFragment", "Error fetching place photo: ${e.message}")
+                    // Upload the bitmap to Firebase Storage
+                    uploadPlaceImageToStorage(bitmap, placeId, place)
+                    
+                }.addOnFailureListener { exception ->
+                    Log.e("AddPostFragment", "Error fetching photo: ${exception.message}")
                     saveCoffeeShopWithPhotoUrl(place, placeId, null)
                 }
             } else {
@@ -411,30 +452,34 @@ class AddPostFragment : Fragment() {
         }
     }
 
-    private fun uploadBitmapToFirebase(bitmap: Bitmap, placeId: String, callback: (String?) -> Unit) {
-        val storage = FirebaseStorage.getInstance()
-        val storageRef = storage.reference.child("coffee_shops/$placeId.jpg")
-        
+    private fun uploadPlaceImageToStorage(bitmap: Bitmap, placeId: String, place: Place) {
+        // Convert bitmap to byte array
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
-        val data = baos.toByteArray()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+        val imageData = baos.toByteArray()
         
-        Log.d("AddPostFragment", "Uploading photo to Firebase for place ID: $placeId")
+        // Reference to storage location
+        val storageRef = FirebaseStorage.getInstance().reference
+            .child("CoffeeShops")
+            .child("$placeId.jpg")
         
-        storageRef.putBytes(data).continueWithTask { task ->
-            if (!task.isSuccessful) {
-                Log.e("AddPostFragment", "Error in upload task: ${task.exception?.message}")
-                throw task.exception ?: Exception("Upload failed")
+        // Upload photo to Firebase Storage
+        val uploadTask = storageRef.putBytes(imageData)
+        uploadTask.addOnSuccessListener {
+            // Get the download URL
+            storageRef.downloadUrl.addOnSuccessListener { uri ->
+                val photoUrl = uri.toString()
+                Log.d("AddPostFragment", "Uploaded coffee shop image to Firebase Storage: $photoUrl")
+                
+                // Save coffee shop with the Firebase Storage URL
+                saveCoffeeShopWithPhotoUrl(place, placeId, photoUrl)
+            }.addOnFailureListener { e ->
+                Log.e("AddPostFragment", "Error getting download URL: ${e.message}")
+                saveCoffeeShopWithPhotoUrl(place, placeId, null)
             }
-            storageRef.downloadUrl
-        }.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                Log.d("AddPostFragment", "Successfully uploaded photo, URL: ${task.result}")
-                callback(task.result.toString())
-            } else {
-                Log.e("AddPostFragment", "Error uploading photo: ${task.exception?.message}")
-                callback(null)
-            }
+        }.addOnFailureListener { e ->
+            Log.e("AddPostFragment", "Error uploading image to Firebase Storage: ${e.message}")
+            saveCoffeeShopWithPhotoUrl(place, placeId, null)
         }
     }
 

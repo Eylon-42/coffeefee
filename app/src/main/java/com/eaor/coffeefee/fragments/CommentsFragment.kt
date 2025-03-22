@@ -20,7 +20,7 @@ import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.CommentsAdapter
 import com.eaor.coffeefee.data.AppDatabase
 import com.eaor.coffeefee.models.Comment
-import com.eaor.coffeefee.repository.UserRepository
+import com.eaor.coffeefee.repositories.UserRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -73,18 +73,43 @@ class CommentsFragment : Fragment() {
     private var postOwnerId: String? = null
     private var postTitle: String? = null
     
+    // Add method to broadcast comment changes
+    private fun broadcastCommentChange(action: String, postId: String, commentCount: Int) {
+        try {
+            val intent = Intent(action).apply {
+                putExtra("postId", postId)
+                putExtra("commentCount", commentCount)
+            }
+            requireContext().sendBroadcast(intent)
+            Log.d("CommentsFragment", "Broadcast sent: $action for post $postId with count $commentCount")
+        } catch (e: Exception) {
+            Log.e("CommentsFragment", "Error broadcasting comment change: ${e.message}")
+        }
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Initialize ViewModel
-        commentsViewModel = ViewModelProvider(this)[CommentsViewModel::class.java]
+        // Initialize ViewModel with factory that provides application context
+        commentsViewModel = ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory(requireActivity().application))[CommentsViewModel::class.java]
         
         // Initialize Firebase
         auth = FirebaseAuth.getInstance()
         db = FirebaseFirestore.getInstance()
         
-        // Initialize UserRepository
-        val userDao = AppDatabase.getDatabase(requireContext()).userDao()
+        // Initialize Room database
+        val appDatabase = AppDatabase.getDatabase(requireContext())
+        
+        // Initialize repositories
+        val userDao = appDatabase.userDao()
         userRepository = UserRepository(userDao, db)
+        
+        // Initialize CommentRepository - new addition for Room caching
+        val commentDao = appDatabase.commentDao()
+        val commentRepository = com.eaor.coffeefee.repositories.CommentRepository(
+            commentDao,
+            db,
+            userRepository
+        )
         
         // Get arguments from bundle
         arguments?.let {
@@ -93,10 +118,10 @@ class CommentsFragment : Fragment() {
             postTitle = it.getString("postTitle")
         }
         
-        // Initialize ViewModel with post ID and repository
+        // Initialize ViewModel with post ID and repositories
         postId?.let { 
             commentsViewModel.initialize(it)
-            commentsViewModel.initializeRepository(userRepository)
+            commentsViewModel.initializeRepositories(commentRepository, userRepository)
         }
         
         // Register for profile update events with the required flag for Android 13+
@@ -135,12 +160,15 @@ class CommentsFragment : Fragment() {
         commentEditText = view.findViewById(R.id.commentEditText)
         postCommentButton = view.findViewById(R.id.postCommentButton)
 
+        // Set up RecyclerView with fixed size for better performance
         commentsRecyclerView.layoutManager = LinearLayoutManager(context)
+        commentsRecyclerView.setHasFixedSize(true)
         
         // Add spacing between comment items using our custom decoration
         val spacing = resources.getDimensionPixelSize(R.dimen.comment_spacing)
         commentsRecyclerView.addItemDecoration(ItemSpacingDecoration(spacing, true))
 
+        Log.d("CommentsFragment", "Setting up CommentsAdapter")
         // Initialize adapter with mutable list
         commentsAdapter = CommentsAdapter(
             comments = mutableListOf(),
@@ -149,6 +177,12 @@ class CommentsFragment : Fragment() {
             onCommentEdit = { comment -> showEditCommentDialog(comment) }
         )
         commentsRecyclerView.adapter = commentsAdapter
+        
+        // Set large item view cache size to prevent recycling issues
+        commentsRecyclerView.setItemViewCacheSize(50)
+        
+        // Prevent RecyclerView from losing its state
+        commentsRecyclerView.isNestedScrollingEnabled = false
 
         // Setup toolbar
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
@@ -160,6 +194,8 @@ class CommentsFragment : Fragment() {
         view.findViewById<TextView>(R.id.toolbarTitle).text = title
 
         view.findViewById<ImageButton>(R.id.backButton).setOnClickListener {
+            // Set refresh flags before navigating back
+            com.eaor.coffeefee.GlobalState.triggerRefreshAfterCommentChange()
             findNavController().navigateUp()
         }
 
@@ -169,6 +205,8 @@ class CommentsFragment : Fragment() {
                 commentsViewModel.addComment(commentText)
                 commentEditText.text.clear()
                 hideKeyboard()
+                // Set refresh flags after adding comment
+                com.eaor.coffeefee.GlobalState.triggerRefreshAfterCommentChange()
             }
         }
 
@@ -189,21 +227,46 @@ class CommentsFragment : Fragment() {
                 bottomNav.visibility = if (keypadHeight > 150) View.GONE else View.VISIBLE
             }
         }
-
-        // Add this line to prevent recycling issues
-        commentsRecyclerView.setItemViewCacheSize(20)
     }
     
     private fun setupObservers() {
         // Observe comments LiveData
         commentsViewModel.comments.observe(viewLifecycleOwner) { comments ->
+            Log.d("CommentsFragment", "==== RECEIVED COMMENTS FROM VIEWMODEL ====")
             Log.d("CommentsFragment", "Received ${comments.size} comments from ViewModel")
+            
+            if (comments.isEmpty()) {
+                Log.d("CommentsFragment", "Empty comments list received from ViewModel")
+            } else {
+                // Debug each comment
+                comments.forEachIndexed { index, comment ->
+                    Log.d("CommentsFragment", "Comment[$index]: id=${comment.id}, text='${comment.text}', user=${comment.userName}")
+                }
+            }
+            
+            // Update adapter with comments
             commentsAdapter.updateComments(comments.toMutableList())
             
-            // Update FeedFragment with new comment count
-            commentsViewModel.commentCount.value?.let { count ->
+            // Scroll to the most recent comment (usually at position 0 since sorted DESC)
+            if (comments.isNotEmpty()) {
+                commentsRecyclerView.scrollToPosition(0)
+            }
+            
+            // Note: We don't broadcast from here anymore to avoid double broadcasting
+            // Comment count updates are handled exclusively by the commentCount observer below
+        }
+        
+        // Observe comment count separately to ensure broadcasts are sent only once per change
+        commentsViewModel.commentCount.observe(viewLifecycleOwner) { count ->
+            postId?.let {
+                Log.d("CommentsFragment", "Broadcasting comment count change: $count for post $it")
+                
+                // Broadcast comment count changes
+                broadcastCommentChange("com.eaor.coffeefee.COMMENT_UPDATED", it, count)
+                
+                // Also update MainActivity if available
                 if (activity is MainActivity) {
-                    (activity as MainActivity).updateCommentCount(postId ?: "", count)
+                    (activity as MainActivity).updateCommentCount(it, count)
                 }
             }
         }
@@ -211,11 +274,13 @@ class CommentsFragment : Fragment() {
         // Observe loading state
         commentsViewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
             // Show/hide loading indicator if needed
+            Log.d("CommentsFragment", "Loading state changed: $isLoading")
         }
         
         // Observe error messages
         commentsViewModel.errorMessage.observe(viewLifecycleOwner) { errorMessage ->
             errorMessage?.let {
+                Log.e("CommentsFragment", "Error from ViewModel: $it")
                 Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             }
         }
@@ -266,17 +331,18 @@ class CommentsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Ensure bottom nav is visible when leaving the fragment
-        if (isAdded) {
-            bottomNav.visibility = View.VISIBLE
-        }
-        
-        // Unregister the broadcast receiver safely
+        // Unregister the broadcast receiver to prevent memory leaks
         try {
             requireContext().unregisterReceiver(profileUpdateReceiver)
             Log.d("CommentsFragment", "Unregistered broadcast receiver")
         } catch (e: Exception) {
             Log.e("CommentsFragment", "Error unregistering receiver: ${e.message}")
+        }
+        
+        // Clean up any references
+        if (::commentsAdapter.isInitialized) {
+            // Clear any references in adapter
+            commentsAdapter.updateComments(mutableListOf())
         }
     }
     
@@ -286,6 +352,9 @@ class CommentsFragment : Fragment() {
             .setMessage("Are you sure you want to delete this comment?")
             .setPositiveButton("Delete") { _, _ ->
                 commentsViewModel.deleteComment(commentId)
+                // Set refresh flags after deleting comment
+                com.eaor.coffeefee.GlobalState.triggerRefreshAfterCommentChange()
+                // After deleting comment, broadcast will be sent through the comments observer
             }
             .setNegativeButton("Cancel", null)
             .show()

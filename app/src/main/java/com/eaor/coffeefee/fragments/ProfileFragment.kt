@@ -22,11 +22,11 @@ import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.data.AppDatabase
 import com.eaor.coffeefee.data.User
-import com.eaor.coffeefee.repository.UserRepository
+import com.eaor.coffeefee.repositories.UserRepository
+import com.eaor.coffeefee.repositories.FeedRepository
 import com.eaor.coffeefee.viewmodels.UserViewModel
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
@@ -48,7 +48,8 @@ import android.graphics.Shader
 import android.graphics.BitmapShader
 import android.content.Intent
 import android.content.Context
-import com.eaor.coffeefee.repository.FeedRepository
+import com.eaor.coffeefee.GlobalState
+import android.content.SharedPreferences
 
 class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var bottomNav: View
@@ -63,6 +64,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private var selectedImageUri: Uri? = null
     private lateinit var storage: FirebaseStorage
     private lateinit var viewModel: UserViewModel
+    private lateinit var sharedPreferences: SharedPreferences
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -96,21 +98,32 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         
-        // Initialize Firebase and Repository
+        // Initialize Firebase
         auth = FirebaseAuth.getInstance()
         val db = FirebaseFirestore.getInstance()
         storage = FirebaseStorage.getInstance()
-        val appDatabase = AppDatabase.getDatabase(requireContext())
-        val userDao = appDatabase.userDao()
-        val feedItemDao = appDatabase.feedItemDao()
-        userRepository = UserRepository(userDao, db)
-        val feedRepository = FeedRepository(feedItemDao, db)
         
-        // Initialize ViewModel
+        // Initialize shared preferences
+        sharedPreferences = requireActivity().getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        
+        // Initialize database, repositories and ViewModel
+        val appDb = AppDatabase.getDatabase(requireContext())
+        userRepository = UserRepository(appDb.userDao(), db)
+        val feedRepository = FeedRepository(appDb.feedItemDao(), db, userRepository)
+
+        // Initialize ViewModel BEFORE setting up UI
         viewModel = ViewModelProvider(this)[UserViewModel::class.java]
-        viewModel.initialize(userRepository, feedRepository)
+        viewModel.setRepository(feedRepository)
+        viewModel.setUserRepository(userRepository)
         
-        // Initialize views
+        // Initialize UI elements
+        setupUI(view)
+        
+        // Observe the user data from the ViewModel
+        setupObservers()
+    }
+    
+    private fun setupUI(view: View) {
         bottomNav = requireActivity().findViewById(R.id.bottom_nav)
         editUserName = view.findViewById(R.id.editUserName)
         editUserEmail = view.findViewById(R.id.editUserEmail)
@@ -142,16 +155,43 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             findNavController().navigateUp()
         }
 
-        // Set up observers
-        setupObservers()
-        
-        // Load user data
-        val userId = auth.currentUser?.uid
-        if (userId != null) {
-            viewModel.getUserData(userId)
+        // Check for existing user data in arguments
+        val args = arguments
+        if (args != null && args.containsKey("userName") && args.containsKey("userEmail")) {
+            // Use the data passed from UserProfileFragment
+            val userName = args.getString("userName", "")
+            val userEmail = args.getString("userEmail", "")
+            val userPhotoUrl = args.getString("userPhotoUrl", "")
+            
+            // Populate UI with passed data
+            editUserName.setText(userName)
+            editUserEmail.setText(userEmail)
+            
+            // Load image from passed URL
+            if (userPhotoUrl.isNotEmpty()) {
+                Picasso.get()
+                    .load(userPhotoUrl)
+                    .fit()
+                    .centerInside()
+                    .transform(CircleTransform())
+                    .placeholder(R.drawable.default_avatar)
+                    .error(R.drawable.default_avatar)
+                    .into(profileImageView)
+            } else {
+                profileImageView.setImageResource(R.drawable.default_avatar)
+            }
+            
+            Log.d("ProfileFragment", "Using prefilled user data: $userName, $userEmail, $userPhotoUrl")
         } else {
-            Toast.makeText(context, "Error: Not logged in", Toast.LENGTH_SHORT).show()
-            findNavController().navigateUp()
+            // Load user data from repository if not passed in arguments
+            val userId = auth.currentUser?.uid
+            if (userId != null) {
+                Log.d("ProfileFragment", "Loading user data from repository")
+                viewModel.getUserData(userId)
+            } else {
+                Toast.makeText(context, "Error: Not logged in", Toast.LENGTH_SHORT).show()
+                findNavController().navigateUp()
+            }
         }
 
         // Set up keyboard visibility listener
@@ -194,21 +234,36 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                 if (!it.profilePhotoUrl.isNullOrEmpty()) {
                     Picasso.get()
                         .load(it.profilePhotoUrl)
+                        .networkPolicy(com.squareup.picasso.NetworkPolicy.OFFLINE)
                         .fit()
                         .centerInside()
                         .transform(CircleTransform())
                         .placeholder(R.drawable.default_avatar)
                         .error(R.drawable.default_avatar)
-                        .into(profileImageView)
+                        .into(profileImageView, object : com.squareup.picasso.Callback {
+                            override fun onSuccess() {
+                                Log.d("ProfileFragment", "Successfully loaded profile image from cache")
+                            }
+                            
+                            override fun onError(e: Exception?) {
+                                Log.e("ProfileFragment", "Error loading profile image from cache: ${e?.message}")
+                                // Try loading from network as fallback
+                                Picasso.get()
+                                    .load(it.profilePhotoUrl)
+                                    .fit()
+                                    .centerInside()
+                                    .transform(CircleTransform())
+                                    .placeholder(R.drawable.default_avatar)
+                                    .error(R.drawable.default_avatar)
+                                    .into(profileImageView)
+                            }
+                        })
                 } else {
                     // User has no profile image, set default
                     profileImageView.setImageResource(R.drawable.default_avatar)
                 }
             }
         }
-        
-        // Observe other LiveData from the ViewModel
-        // This is a key part of the MVVM architecture where the UI observes data changes
         
         // Observe loading state
         viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
@@ -235,6 +290,11 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         viewModel.updateSuccess.observe(viewLifecycleOwner) { success ->
             if (success) {
                 Toast.makeText(context, "Profile updated successfully", Toast.LENGTH_SHORT).show()
+                
+                // Set global refresh flags to ensure all views are updated
+                GlobalState.shouldRefreshFeed = true
+                GlobalState.shouldRefreshProfile = true
+                
                 findNavController().navigateUp()
             }
         }
@@ -374,5 +434,39 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         // Ensure bottom nav is visible when leaving the fragment
         bottomNav.visibility = VISIBLE
         // No navigation handling needed
+    }
+
+    override fun onResume() {
+        super.onResume()
+        
+        // Check if we should refresh the profile
+        val shouldRefresh = GlobalState.shouldRefreshProfile ||
+                           sharedPreferences.getBoolean("should_refresh_profile", false)
+        
+        if (shouldRefresh) {
+            // Reset the flags
+            GlobalState.shouldRefreshProfile = false
+            sharedPreferences.edit().putBoolean("should_refresh_profile", false).apply()
+            
+            Log.d("ProfileFragment", "Refreshing profile data due to global flag")
+            
+            // Only reload user data, the user profile should update automatically
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                // Force refresh - but make sure we only pass parameters the method accepts
+                viewModel.getUserData(currentUser.uid)
+                
+                // Invalidate profile photo cache if we have a URL
+                val photoUrl = currentUser.photoUrl?.toString()
+                if (photoUrl != null && photoUrl.isNotEmpty()) {
+                    try {
+                        Picasso.get().invalidate(photoUrl)
+                        Log.d("ProfileFragment", "Invalidated cache for photo URL: $photoUrl")
+                    } catch (e: Exception) {
+                        Log.e("ProfileFragment", "Error invalidating Picasso cache: ${e.message}")
+                    }
+                }
+            }
+        }
     }
 }

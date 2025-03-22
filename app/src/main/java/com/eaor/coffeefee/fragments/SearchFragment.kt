@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
 class SearchFragment : Fragment() {
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var adapter: CoffeeShopAdapter
-    private val repository = CoffeeShopRepository.getInstance()
+    private lateinit var repository: CoffeeShopRepository
     private val scope = CoroutineScope(Dispatchers.Main)
     
     override fun onCreateView(
@@ -40,6 +40,8 @@ class SearchFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val view = inflater.inflate(R.layout.fragment_search, container, false)
+
+        repository = CoffeeShopRepository.getInstance(requireContext())
 
         // Initialize Toolbar
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
@@ -68,7 +70,7 @@ class SearchFragment : Fragment() {
         adapter.setOnItemClickListener { coffeeShop ->
             val bundle = Bundle().apply {
                 putString("name", coffeeShop.name)
-                putString("description", coffeeShop.caption)
+                putString("description", coffeeShop.description)
                 putFloat("latitude", coffeeShop.latitude.toFloat())
                 putFloat("longitude", coffeeShop.longitude.toFloat())
                 putString("placeId", coffeeShop.placeId)
@@ -91,7 +93,8 @@ class SearchFragment : Fragment() {
 
     private fun loadCoffeeShops() {
         scope.launch {
-            repository.getAllCoffeeShops().collectLatest { coffeeShops ->
+            try {
+                val coffeeShops = repository.getAllCoffeeShops()
                 withContext(Dispatchers.Main) {
                     if (this@SearchFragment::adapter.isInitialized) {
                         adapter.updateData(coffeeShops)
@@ -101,6 +104,8 @@ class SearchFragment : Fragment() {
                         setupAdapterClickListener()
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("SearchFragment", "Error loading coffee shops", e)
             }
         }
     }
@@ -227,7 +232,7 @@ class SearchFragment : Fragment() {
         adapter.setOnItemClickListener { coffeeShop ->
             val bundle = Bundle().apply {
                 putString("name", coffeeShop.name)
-                putString("description", coffeeShop.caption)
+                putString("description", coffeeShop.description)
                 putFloat("latitude", coffeeShop.latitude.toFloat())
                 putFloat("longitude", coffeeShop.longitude.toFloat())
                 putString("placeId", coffeeShop.placeId)

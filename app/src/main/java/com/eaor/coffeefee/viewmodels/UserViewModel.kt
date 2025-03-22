@@ -7,8 +7,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.eaor.coffeefee.data.User
-import com.eaor.coffeefee.repository.FeedRepository
-import com.eaor.coffeefee.repository.UserRepository
+import com.eaor.coffeefee.repositories.FeedRepository
+import com.eaor.coffeefee.repositories.UserRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.launch
@@ -42,6 +42,15 @@ class UserViewModel : ViewModel() {
     fun initialize(repository: UserRepository, feedRepo: FeedRepository) {
         userRepository = repository
         feedRepository = feedRepo
+    }
+    
+    // Alternative setter methods that match ProfileViewModel pattern
+    fun setRepository(repository: FeedRepository) {
+        feedRepository = repository
+    }
+    
+    fun setUserRepository(repository: UserRepository) {
+        userRepository = repository
     }
     
     fun getUserData(userId: String = auth.currentUser?.uid ?: "") {
@@ -106,12 +115,21 @@ class UserViewModel : ViewModel() {
                     _updateSuccess.value = true
                     
                     // Update all posts by this user in the local database
-                    feedRepository.updateUserDataInPosts(
-                        userId = userId,
-                        userName = name,
-                        profilePhotoUrl = updatedUser.profilePhotoUrl
-                    )
-                    Log.d("UserViewModel", "Updated user data in posts")
+                    try {
+                        feedRepository.updateUserDataInPosts(
+                            userId = userId,
+                            userName = name,
+                            profilePhotoUrl = updatedUser.profilePhotoUrl
+                        )
+                        Log.d("UserViewModel", "Updated user data in posts")
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) {
+                            Log.w("UserViewModel", "Post update job was cancelled, profile update still successful")
+                        } else {
+                            Log.e("UserViewModel", "Error updating posts with new user data: ${e.message}")
+                        }
+                        // Don't rethrow, this is a non-critical operation
+                    }
                 } else {
                     _errorMessage.value = "Failed to update user data in the database"
                     _updateSuccess.value = false

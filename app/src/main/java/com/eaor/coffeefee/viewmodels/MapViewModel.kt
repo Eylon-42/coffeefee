@@ -1,5 +1,6 @@
 package com.eaor.coffeefee.viewmodels
 
+import android.content.Context
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -8,13 +9,12 @@ import com.eaor.coffeefee.models.FeedItem
 import com.eaor.coffeefee.repositories.CoffeeShopRepository
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class MapViewModel : BaseViewModel() {
-    private val repository = CoffeeShopRepository.getInstance()
+    private lateinit var repository: CoffeeShopRepository
     
     // Coffee shops LiveData
     private val _coffeeShops = MutableLiveData<List<CoffeeShop>>()
@@ -32,32 +32,18 @@ class MapViewModel : BaseViewModel() {
     private val _userLocation = MutableLiveData<LatLng>()
     val userLocation: LiveData<LatLng> = _userLocation
     
+    // Initialize the repository with context
+    fun initialize(context: Context) {
+        repository = CoffeeShopRepository.getInstance(context)
+    }
+    
     // Load coffee shops from Firestore
     fun loadCoffeeShops() {
         setLoading(true)
         
         viewModelScope.launch {
             try {
-                val result = db.collection("CoffeeShops").get().await()
-                
-                val shops = result.documents.mapNotNull { doc ->
-                    try {
-                        CoffeeShop(
-                            name = doc.getString("name") ?: "",
-                            caption = doc.getString("caption") ?: "",
-                            rating = doc.getDouble("rating")?.toFloat(),
-                            latitude = doc.getDouble("latitude") ?: 0.0,
-                            longitude = doc.getDouble("longitude") ?: 0.0,
-                            address = doc.getString("address"),
-                            photoUrl = doc.getString("photoUrl"),
-                            placeId = doc.getString("placeId")
-                        )
-                    } catch (e: Exception) {
-                        setError("Error parsing coffee shop: ${e.message}")
-                        null
-                    }
-                }
-                
+                val shops = repository.getAllCoffeeShops()
                 _coffeeShops.value = shops
                 clearError()
             } catch (e: Exception) {
@@ -217,7 +203,7 @@ class MapViewModel : BaseViewModel() {
                     val doc = result.documents.first()
                     val shop = CoffeeShop(
                         name = doc.getString("name") ?: "",
-                        caption = doc.getString("caption") ?: "",
+                        description = doc.getString("caption") ?: "",
                         rating = doc.getDouble("rating")?.toFloat(),
                         latitude = doc.getDouble("latitude") ?: 0.0,
                         longitude = doc.getDouble("longitude") ?: 0.0,
@@ -238,7 +224,7 @@ class MapViewModel : BaseViewModel() {
     fun getCoffeeShopByLocation(latLng: LatLng, name: String? = null) {
         viewModelScope.launch {
             try {
-                val shops = _coffeeShops.value ?: repository.getAllCoffeeShops().first()
+                val shops = _coffeeShops.value ?: repository.getAllCoffeeShops()
                 
                 val nearbyShop = shops.minByOrNull { shop ->
                     val shopLatLng = LatLng(shop.latitude, shop.longitude)

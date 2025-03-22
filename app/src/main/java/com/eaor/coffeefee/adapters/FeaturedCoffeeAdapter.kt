@@ -9,7 +9,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
-import com.eaor.coffeefee.models.Coffee
+import com.eaor.coffeefee.models.CoffeeShop
 import com.squareup.picasso.Picasso
 
 /**
@@ -17,20 +17,19 @@ import com.squareup.picasso.Picasso
  */
 class FeaturedCoffeeAdapter(
     private val context: Context,
-    private var coffees: List<Coffee>,
-    private val listener: CoffeeListener
+    private var coffeeShops: List<CoffeeShop>,
+    private val listener: CoffeeShopListener
 ) : RecyclerView.Adapter<FeaturedCoffeeAdapter.ViewHolder>() {
 
-    interface CoffeeListener {
-        fun onCoffeeClicked(coffee: Coffee)
-        fun onAddToFavoritesClicked(coffee: Coffee)
+    interface CoffeeShopListener {
+        fun onCoffeeShopClicked(coffeeShop: CoffeeShop)
+        fun onAddToFavoritesClicked(coffeeShop: CoffeeShop)
     }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val coffeeImage: ImageView = view.findViewById(R.id.coffeeImage)
         val coffeeName: TextView = view.findViewById(R.id.coffeeName)
         val coffeeDescription: TextView = view.findViewById(R.id.coffeeDescription)
-        val coffeePrice: TextView = view.findViewById(R.id.coffeePrice)
         val favoriteButton: ImageButton = view.findViewById(R.id.favoriteButton)
     }
 
@@ -41,16 +40,15 @@ class FeaturedCoffeeAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val coffee = coffees[position]
+        val coffeeShop = coffeeShops[position]
         
-        holder.coffeeName.text = coffee.name
-        holder.coffeeDescription.text = coffee.description
-        holder.coffeePrice.text = String.format("$%.2f", coffee.price)
+        holder.coffeeName.text = coffeeShop.name
+        holder.coffeeDescription.text = coffeeShop.description
         
         // Load coffee image with Picasso
-        if (coffee.imageUrl.isNotEmpty()) {
+        if (coffeeShop.photoUrl != null) {
             Picasso.get()
-                .load(coffee.imageUrl)
+                .load(coffeeShop.photoUrl)
                 .placeholder(R.drawable.placeholder)
                 .error(R.drawable.placeholder)
                 .into(holder.coffeeImage)
@@ -60,18 +58,18 @@ class FeaturedCoffeeAdapter(
         
         // Set click listeners
         holder.itemView.setOnClickListener {
-            listener.onCoffeeClicked(coffee)
+            listener.onCoffeeShopClicked(coffeeShop)
         }
         
         holder.favoriteButton.setOnClickListener {
-            listener.onAddToFavoritesClicked(coffee)
+            listener.onAddToFavoritesClicked(coffeeShop)
         }
     }
 
-    override fun getItemCount(): Int = coffees.size
+    override fun getItemCount(): Int = coffeeShops.size
 
-    fun updateCoffees(newCoffees: List<Coffee>) {
-        coffees = newCoffees
+    fun updateCoffeeShops(newCoffeeShops: List<CoffeeShop>) {
+        coffeeShops = newCoffeeShops
         notifyDataSetChanged()
     }
 } 

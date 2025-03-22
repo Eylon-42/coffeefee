@@ -1,25 +1,21 @@
 package com.eaor.coffeefee.viewmodels
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.eaor.coffeefee.models.Coffee
 import com.eaor.coffeefee.models.CoffeeShop
-import com.eaor.coffeefee.repositories.CoffeeRepository
 import com.eaor.coffeefee.repositories.CoffeeShopRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * ViewModel for handling coffee data and operations
  */
 class CoffeeViewModel : BaseViewModel() {
     
-    // Repositories
-    private val coffeeRepository = CoffeeRepository.getInstance()
-    private val coffeeShopRepository = CoffeeShopRepository.getInstance()
+    // Repository
+    private lateinit var coffeeShopRepository: CoffeeShopRepository
     
     // LiveData for the selected coffee shop
     private val _selectedCoffeeShop = MutableLiveData<CoffeeShop?>()
@@ -29,31 +25,54 @@ class CoffeeViewModel : BaseViewModel() {
     private val _coffeeShops = MutableLiveData<List<CoffeeShop>>()
     val coffeeShops: LiveData<List<CoffeeShop>> = _coffeeShops
     
-    // LiveData for featured coffees
-    private val _featuredCoffees = MutableLiveData<List<Coffee>>()
-    val featuredCoffees: LiveData<List<Coffee>> = _featuredCoffees
+    // LiveData for featured coffees (now using CoffeeShop)
+    private val _featuredCoffees = MutableLiveData<List<CoffeeShop>>()
+    val featuredCoffees: LiveData<List<CoffeeShop>> = _featuredCoffees
     
     // LiveData for coffee categories
     private val _coffeeCategories = MutableLiveData<List<String>>()
     val coffeeCategories: LiveData<List<String>> = _coffeeCategories
     
-    // LiveData for coffees by category
-    private val _categorizedCoffees = MutableLiveData<Map<String, List<Coffee>>>()
-    val categorizedCoffees: LiveData<Map<String, List<Coffee>>> = _categorizedCoffees
+    // LiveData for coffees by category (now using CoffeeShop)
+    private val _categorizedCoffees = MutableLiveData<Map<String, List<CoffeeShop>>>()
+    val categorizedCoffees: LiveData<Map<String, List<CoffeeShop>>> = _categorizedCoffees
+    
+    // Initialize repository with context
+    fun initialize(context: Context) {
+        coffeeShopRepository = CoffeeShopRepository.getInstance(context)
+        
+        // Run the migration process for coffee shop photos
+        migratePhotosToFirebaseStorage()
+    }
+    
+    /**
+     * Migrate coffee shop photos from Google Places URLs to Firebase Storage
+     */
+    private fun migratePhotosToFirebaseStorage() {
+        viewModelScope.launch {
+            try {
+                coffeeShopRepository.migratePhotosToFirebaseStorage()
+            } catch (e: Exception) {
+                // Log but don't show error to user - this is a background task
+                Log.e("CoffeeViewModel", "Error during photo migration: ${e.message}", e)
+            }
+        }
+    }
     
     /**
      * Get a coffee shop by its place ID
      */
-    fun getCoffeeShopByPlaceId(placeId: String) {
+    fun getCoffeeShopByPlaceId(placeId: String, forceRefresh: Boolean = false) {
         setLoading(true)
         
         viewModelScope.launch {
             try {
-                val coffeeShop = coffeeShopRepository.getCoffeeShop(placeId)
+                // Let the repository decide if refresh is needed based on cache staleness
+                val coffeeShop = coffeeShopRepository.getCoffeeShop(placeId, forceRefresh = forceRefresh)
                 _selectedCoffeeShop.value = coffeeShop
                 
-                // Also load nearby shops
-                loadNearbyCoffeeShops(coffeeShop?.latitude, coffeeShop?.longitude)
+                // Load all coffee shops instead of just nearby
+                loadAllCoffeeShops()
                 
                 clearError()
             } catch (e: Exception) {
@@ -67,20 +86,21 @@ class CoffeeViewModel : BaseViewModel() {
     /**
      * Get a coffee shop by its name
      */
-    fun getCoffeeShopByName(name: String) {
+    fun getCoffeeShopByName(name: String, forceRefresh: Boolean = false) {
         setLoading(true)
         
         viewModelScope.launch {
             try {
-                val coffeeShop = coffeeShopRepository.getCoffeeShopByName(name)
+                // Let the repository decide if refresh is needed based on cache staleness
+                val coffeeShop = coffeeShopRepository.getCoffeeShopByName(name, forceRefresh = forceRefresh)
                 _selectedCoffeeShop.value = coffeeShop
                 
-                // Also load nearby shops
-                loadNearbyCoffeeShops(coffeeShop?.latitude, coffeeShop?.longitude)
+                // Load all coffee shops instead of just nearby
+                loadAllCoffeeShops()
                 
                 clearError()
             } catch (e: Exception) {
-                setError("Error loading coffee shop: ${e.message}")
+                setError("Error loading coffee shop by name: ${e.message}")
             } finally {
                 setLoading(false)
             }
@@ -88,21 +108,15 @@ class CoffeeViewModel : BaseViewModel() {
     }
     
     /**
-     * Load nearby coffee shops
+     * Load all coffee shops
      */
-    fun loadNearbyCoffeeShops(centerLat: Double? = null, centerLng: Double? = null) {
+    fun loadAllCoffeeShops() {
         setLoading(true)
         
         viewModelScope.launch {
             try {
-                val shops = if (centerLat != null && centerLng != null) {
-                    // If we have coordinates, use getNearbyShops
-                    coffeeShopRepository.getNearbyShops(centerLat, centerLng)
-                } else {
-                    // Otherwise just load all shops
-                    coffeeShopRepository.getAllCoffeeShops().first()
-                }
-                
+                // Use smart caching strategy
+                val shops = coffeeShopRepository.getAllCoffeeShops(forceRefresh = false)
                 _coffeeShops.value = shops
                 clearError()
             } catch (e: Exception) {
@@ -122,8 +136,8 @@ class CoffeeViewModel : BaseViewModel() {
         
         viewModelScope.launch {
             try {
-                val coffees = coffeeRepository.getFeaturedCoffees()
-                _featuredCoffees.value = coffees
+                val coffeeShops = coffeeShopRepository.getFeaturedCoffees()
+                _featuredCoffees.value = coffeeShops
                 clearError()
             } catch (e: Exception) {
                 setError("Error loading featured coffees: ${e.message}")
@@ -142,7 +156,7 @@ class CoffeeViewModel : BaseViewModel() {
         
         viewModelScope.launch {
             try {
-                val categorized = coffeeRepository.getCategorizedCoffees()
+                val categorized = coffeeShopRepository.getCategorizedCoffees()
                 _categorizedCoffees.value = categorized
                 clearError()
             } catch (e: Exception) {
@@ -155,12 +169,53 @@ class CoffeeViewModel : BaseViewModel() {
     }
     
     /**
-     * Add a coffee to favorites
+     * Refresh the coffee shops data from the server
      */
-    fun addCoffeeToFavorites(coffee: Coffee) {
+    fun refreshCoffeeShops() {
+        setLoading(true)
+        
         viewModelScope.launch {
             try {
-                coffeeRepository.addToFavorites(coffee)
+                // This is an explicit refresh request, so force it
+                val shops = coffeeShopRepository.getAllCoffeeShops(forceRefresh = true)
+                _coffeeShops.value = shops
+                clearError()
+            } catch (e: Exception) {
+                setError("Error refreshing coffee shops: ${e.message}")
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+    
+    /**
+     * Search for coffee shops by name
+     */
+    fun searchCoffeeShops(query: String) {
+        setLoading(true)
+        
+        viewModelScope.launch {
+            try {
+                // Use smart caching strategy
+                val shops = coffeeShopRepository.searchCoffeeShops(query, forceRefresh = false)
+                _coffeeShops.value = shops
+                clearError()
+            } catch (e: Exception) {
+                setError("Error searching coffee shops: ${e.message}")
+                _coffeeShops.value = emptyList()
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+    
+    /**
+     * Add a coffee shop to favorites
+     */
+    fun addToFavorites(coffeeShop: CoffeeShop) {
+        viewModelScope.launch {
+            try {
+                coffeeShopRepository.addToFavorites(coffeeShop)
                 clearError()
             } catch (e: Exception) {
                 setError("Error adding to favorites: ${e.message}")

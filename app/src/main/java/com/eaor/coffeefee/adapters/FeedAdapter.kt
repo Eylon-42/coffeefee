@@ -21,6 +21,7 @@ import android.view.animation.DecelerateInterpolator
 import com.eaor.coffeefee.utils.CircleTransform
 import com.squareup.picasso.MemoryPolicy
 import com.squareup.picasso.NetworkPolicy
+import com.eaor.coffeefee.utils.ImageLoader
 
 class FeedAdapter(
     private val _feedItems: MutableList<FeedItem>, // Rename to _feedItems
@@ -58,14 +59,90 @@ class FeedAdapter(
     }
 
     fun updateCommentCount(postId: String, count: Int) {
-        val position = _feedItems.indexOfFirst { it.id == postId }
-        if (position != -1) {
-            _feedItems[position].commentCount = count
-            notifyItemChanged(position, PAYLOAD_COMMENT_COUNT)
+        try {
+            Log.d("FeedAdapter", "Updating comment count for post $postId to $count")
+            
+            val position = _feedItems.indexOfFirst { it.id == postId }
+            if (position != -1) {
+                val oldCount = _feedItems[position].commentCount
+                Log.d("FeedAdapter", "Found post at position $position, updating comment count: $oldCount -> $count")
+                
+                // Only update and notify if count actually changed
+                if (oldCount != count) {
+                    // Update the model
+                    _feedItems[position].commentCount = count
+                    
+                    // Make sure we log the update attempt and result
+                    Log.d("FeedAdapter", "Comment count changed from $oldCount to $count for post at position $position")
+                    
+                    try {
+                        // Use notifyItemChanged with payload for efficiency
+                        notifyItemChanged(position, PAYLOAD_COMMENT_COUNT)
+                        Log.d("FeedAdapter", "Successfully notified adapter with payload for position $position")
+                    } catch (e: Exception) {
+                        Log.e("FeedAdapter", "Error in notifyItemChanged with payload: ${e.message}")
+                        
+                        // Fallback to regular notify if payload method fails
+                        try {
+                            notifyItemChanged(position)
+                            Log.d("FeedAdapter", "Used fallback full notify for position $position")
+                        } catch (e2: Exception) {
+                            Log.e("FeedAdapter", "Full notifyItemChanged also failed: ${e2.message}")
+                            
+                            // Last resort - notify data set changed
+                            try {
+                                notifyDataSetChanged()
+                                Log.d("FeedAdapter", "Used notifyDataSetChanged as last resort")
+                            } catch (e3: Exception) {
+                                Log.e("FeedAdapter", "All notification methods failed: ${e3.message}")
+                            }
+                        }
+                    }
+                } else {
+                    Log.d("FeedAdapter", "Comment count unchanged (still $count), skipping update")
+                }
+            } else {
+                Log.e("FeedAdapter", "Could not find post $postId in feed items list (size: ${_feedItems.size})")
+                
+                // Debug output of all post IDs to help diagnose issues
+                _feedItems.forEachIndexed { index, item ->
+                    Log.d("FeedAdapter", "Item[$index]: id=${item.id}, commentCount=${item.commentCount}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("FeedAdapter", "Error updating comment count: ${e.message}", e)
         }
     }
 
     fun clearAndAddItems(newItems: List<FeedItem>) {
+        // Skip operation if the new items are identical to existing ones
+        if (newItems == _feedItems) {
+            Log.d("FeedAdapter", "New items identical to existing ones, skipping update")
+            return
+        }
+        
+        // Check if we just need to append new items
+        if (_feedItems.isEmpty()) {
+            // Empty list - just add all items
+            _feedItems.addAll(newItems)
+            notifyDataSetChanged()
+            Log.d("FeedAdapter", "Added ${newItems.size} items to empty adapter")
+            return
+        }
+        
+        // Check if we're adding the same items in the same order
+        if (newItems.size > _feedItems.size && 
+            newItems.subList(0, _feedItems.size) == _feedItems) {
+            // New items contain all existing items and then some more
+            val startPos = _feedItems.size
+            val addedItems = newItems.subList(startPos, newItems.size)
+            _feedItems.addAll(addedItems)
+            notifyItemRangeInserted(startPos, addedItems.size)
+            Log.d("FeedAdapter", "Appended ${addedItems.size} new items")
+            return
+        }
+        
+        // Otherwise do a full replacement
         _feedItems.clear()
         _feedItems.addAll(newItems)
         notifyDataSetChanged()
@@ -107,20 +184,106 @@ class FeedAdapter(
         // Update all posts by this user
         for (i in _feedItems.indices) {
             if (_feedItems[i].userId == userId) {
+                Log.d("FeedAdapter", "Updating post at position $i for user $userId")
+                
+                // Update the post data
                 _feedItems[i].userName = userName
                 _feedItems[i].userPhotoUrl = userPhotoUrl
                 updated = true
+                
+                // Clear Picasso's cache for this URL if available
+                if (!userPhotoUrl.isNullOrEmpty()) {
+                    try {
+                        // This forces Picasso to invalidate its cache for this URL
+                        Picasso.get().invalidate(userPhotoUrl)
+                    } catch (e: Exception) {
+                        Log.e("FeedAdapter", "Error invalidating Picasso cache: ${e.message}")
+                    }
+                }
+                
+                // Notify that this specific item changed
                 notifyItemChanged(i)
             }
         }
         
         if (updated) {
             Log.d("FeedAdapter", "Updated user data for user $userId in adapter")
+        } else {
+            Log.d("FeedAdapter", "No posts found for user $userId in adapter")
+        }
+    }
+
+    fun showLoading(isLoading: Boolean) {
+        if (isLoading) {
+            // Keep items but add a loading indicator if needed
+            // Or just indicate visually that we're refreshing
+            try {
+                // Use existing data but notify adapter that we're "refreshing"
+                notifyItemRangeChanged(0, _feedItems.size, "LOADING")
+                Log.d("FeedAdapter", "Showing loading state for ${_feedItems.size} items")
+            } catch (e: Exception) {
+                Log.e("FeedAdapter", "Error showing loading: ${e.message}")
+            }
+        } else {
+            // Remove loading indicator if needed
+            notifyDataSetChanged()
+        }
+    }
+
+    /**
+     * Refreshes all user data and images in the feed for the specified user
+     * @param userId The user ID to refresh data for
+     * @param userName The new user name
+     * @param userPhotoUrl The new user photo URL
+     */
+    fun refreshUserData(userId: String, userName: String, userPhotoUrl: String?) {
+        Log.d("FeedAdapter", "Refreshing all user data for $userId with name $userName")
+        
+        var updated = false
+        var userPostCount = 0
+        
+        // Update all posts by this user
+        for (i in _feedItems.indices) {
+            if (_feedItems[i].userId == userId) {
+                val post = _feedItems[i]
+                
+                // Check if data actually changed
+                val dataChanged = post.userName != userName || post.userPhotoUrl != userPhotoUrl
+                
+                if (dataChanged) {
+                    // Update the post user data
+                    post.userName = userName
+                    post.userPhotoUrl = userPhotoUrl
+                    updated = true
+                    
+                    // Clear image cache if user photo URL changed
+                    if (post.userPhotoUrl != userPhotoUrl && !userPhotoUrl.isNullOrEmpty()) {
+                        try {
+                            Picasso.get().invalidate(userPhotoUrl)
+                        } catch (e: Exception) {
+                            Log.e("FeedAdapter", "Error invalidating Picasso cache: ${e.message}")
+                        }
+                    }
+                }
+                
+                userPostCount++
+            }
+        }
+        
+        // Only notify data set change if we actually made changes
+        if (updated) {
+            notifyDataSetChanged()
+            Log.d("FeedAdapter", "Updated ${userPostCount} posts for user ${userId}")
+        } else if (userPostCount > 0) {
+            Log.d("FeedAdapter", "Found ${userPostCount} posts for user ${userId} but no data changed")
+        } else {
+            Log.d("FeedAdapter", "No posts found for user ${userId}")
         }
     }
 
     companion object {
         private const val PAYLOAD_COMMENT_COUNT = "payload_comment_count"
+        const val COMMENT_COUNT = "COMMENT_COUNT"
     }
 
     inner class FeedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -136,49 +299,32 @@ class FeedAdapter(
         val likeCount: TextView = itemView.findViewById(R.id.likeCount)
 
         // Correct ImageView for post photo
-        val coffeeImage: ImageView = itemView.findViewById(R.id.coffeeImage)
+        val postImage: ImageView = itemView.findViewById(R.id.coffeeImage)
 
         // Correct ImageView for user photo
         val userPhoto: ImageView = itemView.findViewById(R.id.userAvatar)
 
         fun bind(feedItem: FeedItem) {
-            userName.text = feedItem.userName
+            // Ensure we have a valid username to display
+            val displayName = if (feedItem.userName.isNullOrEmpty()) {
+                "Unknown User"
+            } else {
+                feedItem.userName
+            }
+            
+            userName.text = displayName
             locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load user profile image using Picasso
-            if (!feedItem.userPhotoUrl.isNullOrEmpty()) {
-                // Use Log to help debug the image loading
-                Log.d("FeedAdapter", "Loading profile image for ${feedItem.userName}: ${feedItem.userPhotoUrl}")
-                
-                // Use Picasso with no caching to ensure fresh images
-                Picasso.get()
-                    .load(feedItem.userPhotoUrl)
-                    .transform(CircleTransform())
-                    .placeholder(R.drawable.default_avatar)
-                    .error(R.drawable.default_avatar)
-                    .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
-                    .networkPolicy(NetworkPolicy.NO_CACHE)
-                    .into(userPhoto)
-            } else {
-                userPhoto.setImageResource(R.drawable.default_avatar)
-            }
-
+            // Load user avatar with improved caching settings
+            ImageLoader.loadProfileImage(userAvatar, feedItem.userPhotoUrl)
+            
             // Load post photo
             if (!feedItem.photoUrl.isNullOrEmpty()) {
-                try {
-                    coffeeImage.visibility = View.VISIBLE
-                    Picasso.get()
-                        .load(feedItem.photoUrl)
-                        .placeholder(R.drawable.placeholder)
-                        .error(R.drawable.placeholder)
-                        .into(coffeeImage)
-                } catch (e: Exception) {
-                    Log.e("FeedAdapter", "Error loading post image: ${e.message}")
-                    coffeeImage.visibility = View.GONE
-                }
+                ImageLoader.loadPostImage(postImage, feedItem.photoUrl)
+                postImage.visibility = View.VISIBLE
             } else {
-                coffeeImage.visibility = View.GONE
+                postImage.visibility = View.GONE
             }
 
             postOptionsButton.visibility = if (showOptionsMenu) View.VISIBLE else View.GONE
@@ -296,7 +442,6 @@ class FeedAdapter(
                 }
                 .start()
         }
-
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FeedViewHolder {
@@ -308,28 +453,35 @@ class FeedAdapter(
     override fun onBindViewHolder(holder: FeedViewHolder, position: Int) {
         val feedItem = _feedItems[position]
         
-        // Set user photo with Picasso for consistent handling and no cache
-        if (!feedItem.userPhotoUrl.isNullOrEmpty()) {
-            Picasso.get()
-                .load(feedItem.userPhotoUrl)
-                .transform(CircleTransform())
-                .placeholder(R.drawable.default_avatar)
-                .error(R.drawable.default_avatar)
-                .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
-                .networkPolicy(NetworkPolicy.NO_CACHE)
-                .into(holder.userPhoto)
-        } else {
-            holder.userPhoto.setImageResource(R.drawable.default_avatar)
-        }
+        // Don't double load user photo here - it's already handled in the bind method
+        // which is called right after this
         
         holder.bind(feedItem)
     }
 
     override fun onBindViewHolder(holder: FeedViewHolder, position: Int, payloads: List<Any>) {
-        if (payloads.isNotEmpty() && payloads[0] == PAYLOAD_COMMENT_COUNT) {
-            // Only update the comment count
-            holder.commentCount.text = _feedItems[position].commentCount.toString()
+        if (payloads.isNotEmpty()) {
+            // Handle our payload types
+            when {
+                payloads.contains(PAYLOAD_COMMENT_COUNT) || payloads.contains("COMMENT_COUNT") -> {
+                    // Only update the comment count text
+                    try {
+                        val count = _feedItems[position].commentCount
+                        Log.d("FeedAdapter", "Binding comment count update: position=$position, count=$count")
+                        holder.commentCount.text = count.toString()
+                    } catch (e: Exception) {
+                        Log.e("FeedAdapter", "Error updating comment count in ViewHolder: ${e.message}")
+                        // Fallback to full rebind
+                        super.onBindViewHolder(holder, position, payloads)
+                    }
+                }
+                else -> {
+                    // For other payload types, do a full rebind
+                    super.onBindViewHolder(holder, position, payloads)
+                }
+            }
         } else {
+            // No payloads, do a full rebind
             super.onBindViewHolder(holder, position, payloads)
         }
     }

@@ -1,16 +1,10 @@
 package com.eaor.coffeefee.fragments
-import android.graphics.Bitmap
-import java.io.ByteArrayOutputStream
-import com.google.android.libraries.places.api.net.FetchPhotoRequest
-import com.google.android.libraries.places.api.net.FetchPlaceRequest
-import com.google.firebase.firestore.FieldValue
-import android.Manifest
+
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -24,21 +18,26 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.eaor.coffeefee.BuildConfig
+import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
-import com.eaor.coffeefee.models.FeedItem
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
+import com.google.android.libraries.places.api.net.FetchPhotoRequest
 import com.google.firebase.storage.FirebaseStorage
 import com.squareup.picasso.Picasso
-import com.eaor.coffeefee.MainActivity
+import java.util.Arrays
+import java.util.UUID
+import java.io.ByteArrayOutputStream
 
 class EditPostFragment : Fragment() {
     private lateinit var db: FirebaseFirestore
@@ -293,11 +292,145 @@ class EditPostFragment : Fragment() {
         db.collection("Posts").document(postId)
             .update(updateData)
             .addOnSuccessListener {
+                Log.d("EditPostFragment", "Post updated successfully")
+                
+                // Update coffee shop data if location changed
+                if (selectedLocation != null && selectedPlaceName != null && selectedPlaceId != null) {
+                    updateCoffeeShopData()
+                } else {
+                    // If no coffee shop update needed, send broadcast immediately
+                    sendPostUpdatedBroadcast()
+                }
+                
                 Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
                 findNavController().navigateUp()
             }
             .addOnFailureListener { e ->
                 Toast.makeText(context, "Error updating post: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+    
+    private fun updateCoffeeShopData() {
+        if (selectedPlaceId == null) {
+            sendPostUpdatedBroadcast()
+            return
+        }
+        
+        val coffeeShopData = hashMapOf<String, Any>(
+            "name" to (selectedPlaceName ?: "Unnamed Coffee Shop"),
+            "latitude" to (selectedLocation?.latitude ?: 0.0),
+            "longitude" to (selectedLocation?.longitude ?: 0.0),
+            "placeId" to selectedPlaceId!!
+        )
+        
+        // Add optional fields if available
+        if (selectedPlaceRating != null) coffeeShopData["rating"] = selectedPlaceRating!!
+        if (selectedPlaceDescription != null) coffeeShopData["caption"] = selectedPlaceDescription!!
+        if (selectedPlacePhotoUrl != null) coffeeShopData["photoUrl"] = selectedPlacePhotoUrl!!
+        if (selectedPlaceAddress != null) coffeeShopData["address"] = selectedPlaceAddress!!
+        
+        // Update the coffee shop document
+        db.collection("CoffeeShops")
+            .document(selectedPlaceId!!)
+            .update(coffeeShopData)
+            .addOnSuccessListener {
+                Log.d("EditPostFragment", "Coffee shop updated successfully")
+                
+                // Invalidate Picasso cache for coffee shop photo
+                if (selectedPlacePhotoUrl != null) {
+                    com.squareup.picasso.Picasso.get().invalidate(selectedPlacePhotoUrl)
+                }
+                
+                sendPostUpdatedBroadcast()
+            }
+            .addOnFailureListener { e ->
+                Log.e("EditPostFragment", "Error updating coffee shop: ${e.message}")
+                // Still send the broadcast even if coffee shop update fails
+                sendPostUpdatedBroadcast()
+            }
+    }
+    
+    private fun sendPostUpdatedBroadcast() {
+        // Get the updated photo URL from Firestore to ensure we have the most recent one
+        db.collection("Posts").document(postId)
+            .get()
+            .addOnSuccessListener { document ->
+                // First check if the fragment is still attached to avoid crashes
+                if (!isAdded) {
+                    Log.d("EditPostFragment", "Fragment not attached, skipping broadcast")
+                    // Set global refresh flags even if we can't send the broadcast
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    return@addOnSuccessListener
+                }
+                
+                try {
+                    val photoUrl = document.getString("photoUrl")
+                    
+                    // Broadcast that a post has been updated
+                    val intent = Intent("com.eaor.coffeefee.POST_UPDATED")
+                    intent.putExtra("postId", postId)
+                    intent.putExtra("userId", FirebaseAuth.getInstance().currentUser?.uid ?: "")
+                    
+                    // Add photo URL for image cache invalidation
+                    if (!photoUrl.isNullOrEmpty()) {
+                        intent.putExtra("photoUrl", photoUrl)
+                        
+                        // Invalidate Picasso cache for the post photo
+                        com.squareup.picasso.Picasso.get().invalidate(photoUrl)
+                    }
+                    
+                    // Use the appropriate API based on Android version
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        // For Android 13+, specify broadcast flags
+                        requireContext().sendBroadcast(intent, null)
+                    } else {
+                        // For older Android versions
+                        requireContext().sendBroadcast(intent)
+                    }
+                    
+                    // Set global refresh flags using the helper method
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    
+                    Log.d("EditPostFragment", "Broadcast POST_UPDATED event with postId: $postId, photoUrl: $photoUrl")
+                } catch (e: Exception) {
+                    Log.e("EditPostFragment", "Error sending broadcast: ${e.message}")
+                    // Ensure flags are set even if broadcast fails
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                }
+            }
+            .addOnFailureListener { e ->
+                // Check if fragment is still attached
+                if (!isAdded) {
+                    Log.d("EditPostFragment", "Fragment not attached during error, skipping broadcast")
+                    // Set global refresh flags even if we can't send the broadcast
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    return@addOnFailureListener
+                }
+                
+                try {
+                    // If we can't get the photo URL, still send the broadcast
+                    val intent = Intent("com.eaor.coffeefee.POST_UPDATED")
+                    intent.putExtra("postId", postId)
+                    intent.putExtra("userId", FirebaseAuth.getInstance().currentUser?.uid ?: "")
+                    
+                    // Use the appropriate API based on Android version
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        requireContext().sendBroadcast(intent, null)
+                    } else {
+                        requireContext().sendBroadcast(intent)
+                    }
+                    
+                    // Set global refresh flags
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    
+                    Log.d("EditPostFragment", "Broadcast POST_UPDATED event with postId: $postId (without photo URL)")
+                } catch (e2: Exception) {
+                    Log.e("EditPostFragment", "Error sending broadcast: ${e2.message}")
+                    // Ensure flags are set even if broadcast fails
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                }
+                
+                Log.e("EditPostFragment", "Error getting post photo URL: ${e.message}")
             }
     }
 
@@ -366,18 +499,21 @@ class EditPostFragment : Fragment() {
             val photoMetadata = response.place.photoMetadatas?.firstOrNull()
             
             if (photoMetadata != null) {
-                // Create a FetchPhotoRequest
-                val photoRequest = FetchPhotoRequest.builder(photoMetadata).build()
+                // Create a fetch photo request
+                val photoRequest = FetchPhotoRequest.builder(photoMetadata)
+                    .setMaxWidth(800)
+                    .setMaxHeight(800)
+                    .build()
+                
+                // Fetch the photo
                 MainActivity.placesClient.fetchPhoto(photoRequest).addOnSuccessListener { fetchPhotoResponse ->
-                    // Get the bitmap from the photo response
                     val bitmap = fetchPhotoResponse.bitmap
                     
-                    // Upload to Firebase Storage and get URL
-                    uploadPhotoToFirebase(bitmap, placeId) { url ->
-                        callback(url)
-                    }
-                }.addOnFailureListener { e ->
-                    Log.e("EditPostFragment", "Error fetching place photo: ${e.message}")
+                    // Upload to Firebase Storage
+                    uploadPhotoToFirebase(bitmap, placeId, callback)
+                    
+                }.addOnFailureListener { exception ->
+                    Log.e("EditPostFragment", "Error fetching photo: ${exception.message}")
                     callback(null)
                 }
             } else {
@@ -390,26 +526,35 @@ class EditPostFragment : Fragment() {
         }
     }
 
+    // Method updated to upload photos to Firebase Storage
     private fun uploadPhotoToFirebase(bitmap: Bitmap, placeId: String, callback: (String?) -> Unit) {
-        val storage = FirebaseStorage.getInstance()
-        val storageRef = storage.reference.child("coffee_shops/$placeId.jpg")
-        
+        // Convert bitmap to byte array
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
-        val data = baos.toByteArray()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+        val imageData = baos.toByteArray()
         
-        storageRef.putBytes(data).continueWithTask { task ->
-            if (!task.isSuccessful) {
-                throw task.exception ?: Exception("Upload failed")
-            }
-            storageRef.downloadUrl
-        }.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                callback(task.result.toString())
-            } else {
-                Log.e("EditPostFragment", "Error uploading photo: ${task.exception?.message}")
+        // Reference to storage location - using CoffeeShops folder as requested
+        val storageRef = FirebaseStorage.getInstance().reference
+            .child("CoffeeShops")
+            .child("$placeId.jpg")
+        
+        // Upload photo to Firebase Storage
+        val uploadTask = storageRef.putBytes(imageData)
+        uploadTask.addOnSuccessListener {
+            // Get the download URL
+            storageRef.downloadUrl.addOnSuccessListener { uri ->
+                val photoUrl = uri.toString()
+                Log.d("EditPostFragment", "Uploaded coffee shop image to Firebase Storage: $photoUrl")
+                
+                // Return the Firebase Storage URL
+                callback(photoUrl)
+            }.addOnFailureListener { e ->
+                Log.e("EditPostFragment", "Error getting download URL: ${e.message}")
                 callback(null)
             }
+        }.addOnFailureListener { e ->
+            Log.e("EditPostFragment", "Error uploading image to Firebase Storage: ${e.message}")
+            callback(null)
         }
     }
 }

@@ -33,4 +33,22 @@ interface UserDao {
 
     @Query("SELECT * FROM users")
     fun observeAllUsers(): Flow<List<User>>
+
+    /**
+     * Get users by a list of IDs
+     */
+    @Query("SELECT * FROM users WHERE uid IN (:userIds)")
+    suspend fun getUsersByIds(userIds: List<String>): List<User>
+    
+    /**
+     * Get all users
+     */
+    @Query("SELECT * FROM users")
+    suspend fun getAllUsers(): List<User>
+
+    /**
+     * Delete a user by their ID
+     */
+    @Query("DELETE FROM users WHERE uid = :userId")
+    suspend fun deleteUserById(userId: String)
 }

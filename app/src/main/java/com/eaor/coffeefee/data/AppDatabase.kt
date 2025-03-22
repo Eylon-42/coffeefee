@@ -5,10 +5,21 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [User::class, FeedItemEntity::class], version = 4, exportSchema = false)
+@Database(
+    entities = [
+        User::class, 
+        FeedItemEntity::class, 
+        CommentEntity::class,
+        CoffeeShopEntity::class
+    ], 
+    version = 7, 
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun feedItemDao(): FeedItemDao
+    abstract fun commentDao(): CommentDao
+    abstract fun coffeeShopDao(): CoffeeShopDao
 
     companion object {
         @Volatile

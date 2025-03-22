@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
+import com.eaor.coffeefee.utils.ImageLoader
 
 class ImageAdapter(
     private val images: List<Uri>,
@@ -24,7 +25,13 @@ class ImageAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.imageView.setImageURI(images[position])
+        // Use ImageLoader for consistent image loading
+        ImageLoader.loadPostImage(
+            holder.imageView,
+            images[position].toString(),
+            R.drawable.placeholder
+        )
+            
         holder.itemView.setOnClickListener { onImageClick(position) }
     }
 

@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 class FavoriteFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: CoffeeShopAdapter
-    private val repository = CoffeeShopRepository.getInstance()
+    private lateinit var repository: CoffeeShopRepository
     private val scope = CoroutineScope(Dispatchers.Main)
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
@@ -47,6 +47,7 @@ class FavoriteFragment : Fragment() {
         (requireActivity() as AppCompatActivity).supportActionBar?.setDisplayShowTitleEnabled(false)
         view.findViewById<TextView>(R.id.toolbarTitle).text = "Favorites"
         
+        repository = CoffeeShopRepository.getInstance(requireContext())
         recyclerView = view.findViewById(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(context)
         adapter = CoffeeShopAdapter(emptyList(), showCaptions = false)
@@ -72,16 +73,15 @@ class FavoriteFragment : Fragment() {
                 val favoriteIds = favoritesSnapshot.documents.map { doc -> doc.id }.toSet()
                 
                 // Get all coffee shops and filter by favorites
-                repository.getAllCoffeeShops().collectLatest { allCoffeeShops ->
-                    val favoriteCoffeeShops = allCoffeeShops.filter { shop -> 
-                        shop.placeId?.let { id -> favoriteIds.contains(id) } ?: false
-                    }
-                    
-                    withContext(Dispatchers.Main) {
-                        adapter = CoffeeShopAdapter(favoriteCoffeeShops, showCaptions = false)
-                        setupAdapterClickListener(adapter)
-                        recyclerView.adapter = adapter
-                    }
+                val allCoffeeShops = repository.getAllCoffeeShops()
+                val favoriteCoffeeShops = allCoffeeShops.filter { shop -> 
+                    shop.placeId?.let { id -> favoriteIds.contains(id) } ?: false
+                }
+                
+                withContext(Dispatchers.Main) {
+                    adapter = CoffeeShopAdapter(favoriteCoffeeShops, showCaptions = false)
+                    setupAdapterClickListener(adapter)
+                    recyclerView.adapter = adapter
                 }
             } catch (e: Exception) {
                 Log.e("FavoriteFragment", "Error loading favorite coffee shops", e)
@@ -93,7 +93,7 @@ class FavoriteFragment : Fragment() {
         adapter.setOnItemClickListener { coffeeShop ->
             val bundle = Bundle().apply {
                 putString("name", coffeeShop.name)
-                putString("description", coffeeShop.caption)
+                putString("description", coffeeShop.description)
                 putFloat("latitude", coffeeShop.latitude.toFloat())
                 putFloat("longitude", coffeeShop.longitude.toFloat())
                 putString("placeId", coffeeShop.placeId)

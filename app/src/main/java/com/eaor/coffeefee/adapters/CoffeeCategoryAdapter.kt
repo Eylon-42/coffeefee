@@ -8,14 +8,14 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.eaor.coffeefee.R
-import com.eaor.coffeefee.models.Coffee
+import com.eaor.coffeefee.models.CoffeeShop
 
 /**
  * Adapter for displaying coffee categories with their coffees
  */
 class CoffeeCategoryAdapter(
     private val context: Context,
-    private var categories: Map<String, List<Coffee>> = emptyMap()
+    private var categories: Map<String, List<CoffeeShop>> = emptyMap()
 ) : RecyclerView.Adapter<CoffeeCategoryAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -31,12 +31,12 @@ class CoffeeCategoryAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val categoryName = categories.keys.elementAt(position)
-        val coffees = categories[categoryName] ?: emptyList()
+        val coffeeShops = categories[categoryName] ?: emptyList()
         
         holder.categoryTitle.text = categoryName
         
         // Setup nested RecyclerView for coffees in this category
-        val adapter = SimpleCoffeeAdapter(context, coffees)
+        val adapter = SimpleCoffeeShopAdapter(context, coffeeShops)
         holder.coffeesRecyclerView.layoutManager = 
             LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
         holder.coffeesRecyclerView.adapter = adapter
@@ -44,36 +44,36 @@ class CoffeeCategoryAdapter(
 
     override fun getItemCount(): Int = categories.size
 
-    fun updateCategories(newCategories: Map<String, List<Coffee>>) {
+    fun updateCategories(newCategories: Map<String, List<CoffeeShop>>) {
         categories = newCategories
         notifyDataSetChanged()
     }
     
     /**
-     * Simple adapter for coffee items within a category
+     * Simple adapter for coffee shop items within a category
      */
-    inner class SimpleCoffeeAdapter(
+    inner class SimpleCoffeeShopAdapter(
         private val context: Context,
-        private val coffees: List<Coffee>
-    ) : RecyclerView.Adapter<SimpleCoffeeAdapter.CoffeeViewHolder>() {
+        private val coffeeShops: List<CoffeeShop>
+    ) : RecyclerView.Adapter<SimpleCoffeeShopAdapter.CoffeeShopViewHolder>() {
         
-        inner class CoffeeViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        inner class CoffeeShopViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val coffeeName: TextView = view.findViewById(R.id.coffeeName)
-            val coffeePrice: TextView = view.findViewById(R.id.coffeePrice)
+            // Note: price is not used as it's not in the CoffeeShop model
         }
         
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CoffeeViewHolder {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CoffeeShopViewHolder {
             val view = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_simple_coffee, parent, false)
-            return CoffeeViewHolder(view)
+            return CoffeeShopViewHolder(view)
         }
         
-        override fun onBindViewHolder(holder: CoffeeViewHolder, position: Int) {
-            val coffee = coffees[position]
-            holder.coffeeName.text = coffee.name
-            holder.coffeePrice.text = String.format("$%.2f", coffee.price)
+        override fun onBindViewHolder(holder: CoffeeShopViewHolder, position: Int) {
+            val coffeeShop = coffeeShops[position]
+            holder.coffeeName.text = coffeeShop.name
+            // Price field is not set as it's not in the CoffeeShop model
         }
         
-        override fun getItemCount(): Int = coffees.size
+        override fun getItemCount(): Int = coffeeShops.size
     }
 } 

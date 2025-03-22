@@ -51,7 +51,7 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
     private lateinit var descriptionTextView: TextView
     private lateinit var locationAddressTextView: TextView
     private lateinit var openInMapsButton: Button
-    private val repository = CoffeeShopRepository.getInstance()
+    private lateinit var repository: CoffeeShopRepository
     private val scope = CoroutineScope(Dispatchers.Main)
     private val markers = mutableMapOf<String, CoffeeShop>()
     private var selectedCoffeeShop: CoffeeShop? = null
@@ -77,6 +77,7 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
     ): View? {
         val rootView = inflater.inflate(R.layout.fragment_coffee_map, container, false)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
+        repository = CoffeeShopRepository.getInstance(requireContext())
 
         // Initialize views
         descriptionOverlay = rootView.findViewById(R.id.descriptionOverlay)
@@ -124,7 +125,7 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
                 selectedCoffeeShop = CoffeeShop(
                     name = name,
                     rating = rating,
-                    caption = "",  // Not needed for map
+                    description = "",  // Not needed for map
                     latitude = 0.0,  // Will be updated from repository
                     longitude = 0.0,  // Will be updated from repository
                     placeId = placeId,
@@ -163,55 +164,55 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
     private fun loadCoffeeShops() {
         scope.launch {
             try {
-                repository.getAllCoffeeShops().collectLatest { coffeeShops ->
-                    // Clear existing markers
-                    googleMap.clear()
-                    markers.clear()
+                val shops = repository.getAllCoffeeShops()
+                
+                // Clear existing markers
+                googleMap.clear()
+                markers.clear()
 
-                    // Add markers for all coffee shops
-                    coffeeShops.forEach { shop ->
-                        val position = LatLng(shop.latitude, shop.longitude)
-                        val marker = googleMap.addMarker(
-                            MarkerOptions()
-                                .position(position)
-                                .title(shop.name)
-                        )
-                        marker?.let { markers[it.id] = shop }
+                // Add markers for all coffee shops
+                shops.forEach { shop ->
+                    val position = LatLng(shop.latitude, shop.longitude)
+                    val marker = googleMap.addMarker(
+                        MarkerOptions()
+                            .position(position)
+                            .title(shop.name)
+                    )
+                    marker?.let { markers[it.id] = shop }
 
-                        // If this is the selected coffee shop, zoom to it and show overlay
-                        if (shop.placeId == selectedCoffeeShop?.placeId) {
-                            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(position, 15f))
-                            marker?.showInfoWindow()
-                            
-                            // Update and show the description overlay
-                            locationNameTextView.text = shop.name
-                            descriptionTextView.text = shop.caption
-                            locationAddressTextView.text = shop.address ?: "Address not available"
-                            descriptionOverlay.visibility = View.VISIBLE
-                        }
+                    // If this is the selected coffee shop, zoom to it and show overlay
+                    if (shop.placeId == selectedCoffeeShop?.placeId) {
+                        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(position, 15f))
+                        marker?.showInfoWindow()
+                        
+                        // Update and show the description overlay
+                        locationNameTextView.text = shop.name
+                        descriptionTextView.text = shop.description
+                        locationAddressTextView.text = shop.address ?: "Address not available"
+                        descriptionOverlay.visibility = View.VISIBLE
                     }
+                }
 
-                    // If no specific shop is selected, get current location
-                    if (selectedCoffeeShop == null) {
-                        if (hasLocationPermissions()) {
-                            try {
-                                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                                    location?.let {
-                                        val currentLocation = LatLng(it.latitude, it.longitude)
-                                        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15f))
-                                    } ?: run {
-                                        // If location is null, show all markers
-                                        showAllMarkers(coffeeShops)
-                                    }
+                // If no specific shop is selected, get current location
+                if (selectedCoffeeShop == null) {
+                    if (hasLocationPermissions()) {
+                        try {
+                            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                                location?.let {
+                                    val currentLocation = LatLng(it.latitude, it.longitude)
+                                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15f))
+                                } ?: run {
+                                    // If location is null, show all markers
+                                    showAllMarkers(shops)
                                 }
-                            } catch (e: SecurityException) {
-                                Log.e("CoffeeMapFragment", "Error getting location", e)
-                                showAllMarkers(coffeeShops)
                             }
-                        } else {
-                            checkLocationPermission()
-                            showAllMarkers(coffeeShops)
+                        } catch (e: SecurityException) {
+                            Log.e("CoffeeMapFragment", "Error getting location", e)
+                            showAllMarkers(shops)
                         }
+                    } else {
+                        checkLocationPermission()
+                        showAllMarkers(shops)
                     }
                 }
             } catch (e: Exception) {
@@ -247,7 +248,7 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
 
             // Update and show the description overlay
             locationNameTextView.text = coffeeShop.name
-            descriptionTextView.text = coffeeShop.caption
+            descriptionTextView.text = coffeeShop.description
             locationAddressTextView.text = coffeeShop.address ?: "Address not available"
             descriptionOverlay.visibility = View.VISIBLE
         }
@@ -341,6 +342,24 @@ class CoffeeMapFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnMarkerClic
     }
 
     override fun onDestroyView() {
+        // Properly cleanup map resources to prevent database locks
+        if (::googleMap.isInitialized) {
+            try {
+                googleMap.clear()
+                googleMap.setMapType(GoogleMap.MAP_TYPE_NONE)
+                
+                // Remove all listeners to prevent callbacks after fragment is destroyed
+                googleMap.setOnMarkerClickListener(null)
+                googleMap.setOnMapClickListener(null)
+                
+                // Force release map resources
+                val mapFragment = childFragmentManager.findFragmentById(R.id.map) as? SupportMapFragment
+                mapFragment?.onDestroyView()
+            } catch (e: Exception) {
+                Log.e("CoffeeMapFragment", "Error cleaning up map resources", e)
+            }
+        }
+        
         // Restore bottom navigation visibility when leaving this fragment
         val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_nav)
         bottomNav?.visibility = View.VISIBLE

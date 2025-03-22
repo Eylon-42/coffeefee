@@ -29,6 +29,7 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.squareup.picasso.Picasso
+import com.eaor.coffeefee.GlobalState
 
 class CoffeeFragment : Fragment(), OnMapReadyCallback {
     private lateinit var coffeeViewModel: CoffeeViewModel
@@ -46,6 +47,7 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         coffeeViewModel = ViewModelProvider(this)[CoffeeViewModel::class.java]
+        coffeeViewModel.initialize(requireContext())
     }
 
     override fun onCreateView(
@@ -73,7 +75,6 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             photoUrl = args.getString("photoUrl")
             rating = if (args.containsKey("rating")) args.getFloat("rating") else null
             val address = args.getString("address")
-            val imageUrl = args.getString("imageUrl", "")
 
             view.findViewById<TextView>(R.id.toolbarTitle).text = coffeeName.takeIf { it.isNotEmpty() } 
                 ?: "Unnamed Coffee Shop"
@@ -86,12 +87,6 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
 
             setupRatingDisplay(view, rating)
             loadCoffeeShopPhoto(view)
-
-            if (imageUrl.isNotEmpty()) {
-                Picasso.get()
-                    .load(imageUrl)
-                    .into(coffeeImage)
-            }
 
             val mapFragment = childFragmentManager
                 .findFragmentById(R.id.coffeeLocationMap) as SupportMapFragment
@@ -152,14 +147,37 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
     override fun onMapReady(map: GoogleMap) {
         this.googleMap = map
 
-        if (coffeeLatitude != 0f && coffeeLongitude != 0f) {
-            val coffeeLocation = LatLng(coffeeLatitude.toDouble(), coffeeLongitude.toDouble())
-            val marker = googleMap.addMarker(MarkerOptions().position(coffeeLocation).title(coffeeName))
-            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(coffeeLocation, 15f))
-            marker?.showInfoWindow()
-        }
+        try {
+            // Enable lite mode for the map to reduce database locking
+            googleMap.mapType = GoogleMap.MAP_TYPE_NORMAL
+            googleMap.isIndoorEnabled = false
+            googleMap.isBuildingsEnabled = false
+            googleMap.isTrafficEnabled = false
+            
+            if (coffeeLatitude != 0f && coffeeLongitude != 0f) {
+                val coffeeLocation = LatLng(coffeeLatitude.toDouble(), coffeeLongitude.toDouble())
+                val marker = googleMap.addMarker(MarkerOptions()
+                    .position(coffeeLocation)
+                    .title(coffeeName)
+                    .snippet(arguments?.getString("address") ?: ""))
+                
+                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(coffeeLocation, 15f))
+                
+                // Ensure the info window is shown with a slight delay to make sure the map is fully loaded
+                view?.postDelayed({
+                    marker?.showInfoWindow()
+                }, 300)
+            }
 
-        googleMap.uiSettings.isZoomControlsEnabled = true
+            googleMap.uiSettings.isZoomControlsEnabled = true
+            googleMap.uiSettings.isMapToolbarEnabled = true
+            googleMap.uiSettings.isRotateGesturesEnabled = false
+            googleMap.uiSettings.isScrollGesturesEnabled = false
+            googleMap.uiSettings.isTiltGesturesEnabled = false
+            googleMap.uiSettings.isZoomGesturesEnabled = false
+        } catch (e: Exception) {
+            Log.e("CoffeeFragment", "Error setting up map", e)
+        }
     }
 
     private fun setupRatingDisplay(view: View, rating: Float?) {
@@ -248,6 +266,58 @@ class CoffeeFragment : Fragment(), OnMapReadyCallback {
             loadCoffeeShopPhoto(v)
             v.findViewById<TextView>(R.id.coffeeAddress)?.text = 
                 coffeeShop.address ?: "Address not available"
+            v.findViewById<TextView>(R.id.descriptionText)?.text = 
+                coffeeShop.description ?: "No description available"
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        
+        // Check if we should refresh coffee shop
+        val shouldRefresh = GlobalState.shouldRefreshCoffeeShops || 
+                           (arguments?.getBoolean("force_refresh") == true)
+        
+        // Only reload if needed
+        if (shouldRefresh && coffeeName.isNotEmpty() && coffeeViewModel.selectedCoffeeShop.value == null) {
+            // We need to refresh data, try by placeId first (more reliable)
+            if (placeId != null) {
+                coffeeViewModel.getCoffeeShopByPlaceId(placeId!!)
+            } else if (coffeeName.isNotEmpty()) {
+                coffeeViewModel.getCoffeeShopByName(coffeeName)
+            }
+            
+            // Reset the flag after refreshing
+            GlobalState.shouldRefreshCoffeeShops = false
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Pause map rendering to prevent resource overuse
+        if (::googleMap.isInitialized) {
+            try {
+                val mapFragment = childFragmentManager
+                    .findFragmentById(R.id.coffeeLocationMap) as? SupportMapFragment
+                mapFragment?.onPause()
+            } catch (e: Exception) {
+                Log.e("CoffeeFragment", "Error pausing map", e)
+            }
+        }
+    }
+    
+    override fun onDestroyView() {
+        super.onDestroyView()
+        // Clean up map resources to prevent memory leaks and database locks
+        if (::googleMap.isInitialized) {
+            try {
+                googleMap.clear()
+                val mapFragment = childFragmentManager
+                    .findFragmentById(R.id.coffeeLocationMap) as? SupportMapFragment
+                mapFragment?.onDestroyView()
+            } catch (e: Exception) {
+                Log.e("CoffeeFragment", "Error cleaning up map resources", e)
+            }
         }
     }
 

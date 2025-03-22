@@ -25,6 +25,9 @@ interface FeedItemDao {
     @Query("DELETE FROM feed_items WHERE id = :id")
     suspend fun deleteFeedItem(id: String)
 
+    @Query("DELETE FROM feed_items WHERE userId = :userId")
+    suspend fun deleteUserFeedItems(userId: String)
+
     @Update
     suspend fun updateFeedItem(feedItem: FeedItemEntity)
 

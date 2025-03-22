@@ -63,7 +63,7 @@ class CoffeeShopAdapter(
         holder.caption.visibility = if (showCaptions) View.VISIBLE else View.GONE
         
         if (showCaptions) {
-            holder.caption.text = shop.caption
+            holder.caption.text = shop.description
         }
         
         // Set up rating hearts

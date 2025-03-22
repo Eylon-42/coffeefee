@@ -8,8 +8,6 @@ import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.models.Comment
 
@@ -37,18 +35,24 @@ class CommentsAdapter(
     override fun onBindViewHolder(holder: CommentViewHolder, position: Int) {
         val comment = comments[position]
         
-        // Log all data for debugging
+        // Enhanced logging for debugging
+        Log.d("CommentsAdapter", "=== BINDING COMMENT ===")
         Log.d("CommentsAdapter", "Binding comment at position $position:")
         Log.d("CommentsAdapter", "  -> id: ${comment.id}")
+        Log.d("CommentsAdapter", "  -> postId: ${comment.postId}")
         Log.d("CommentsAdapter", "  -> userId: ${comment.userId}")
         Log.d("CommentsAdapter", "  -> userName: '${comment.userName}'")
         Log.d("CommentsAdapter", "  -> photoUrl: ${comment.userPhotoUrl}")
         Log.d("CommentsAdapter", "  -> text: ${comment.text}")
         
-        holder.commentText.text = comment.text
+        // Set comment text - ALWAYS set this even if empty
+        holder.commentText.text = comment.text.ifEmpty { "[Empty comment]" }
         
-        // Set username with advanced fallback
-        val displayName = if (comment.userName.isBlank()) "User" else comment.userName
+        // Set username with more aggressive fallback
+        val displayName = when {
+            comment.userName.isNotBlank() -> comment.userName
+            else -> "User ${comment.userId.take(4)}" // Use part of the ID as identifier if no name
+        }
         holder.userName.text = displayName
         
         // Set timestamp
@@ -73,31 +77,39 @@ class CommentsAdapter(
             if (comment.userPhotoUrl != null && comment.userPhotoUrl!!.isNotEmpty()) {
                 Log.d("CommentsAdapter", "Loading profile image: ${comment.userPhotoUrl}")
                 
-                // Apply Glide with proper circular transformation
-                Glide.with(context)
+                // Try loading from cache first
+                com.squareup.picasso.Picasso.get()
                     .load(comment.userPhotoUrl)
-                    .apply(RequestOptions.circleCropTransform()
-                        .placeholder(R.drawable.default_avatar)
-                        .error(R.drawable.default_avatar)
-                        .override(120, 120)
-                        .centerCrop())
-                    .transition(com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions.withCrossFade())
-                    .into(holder.userImage)
+                    .networkPolicy(com.squareup.picasso.NetworkPolicy.OFFLINE)
+                    .transform(com.eaor.coffeefee.utils.CircleTransform())
+                    .placeholder(R.drawable.default_avatar)
+                    .error(R.drawable.default_avatar)
+                    .into(holder.userImage, object : com.squareup.picasso.Callback {
+                        override fun onSuccess() {
+                            // Image loaded successfully from cache
+                            Log.d("CommentsAdapter", "Successfully loaded image from cache for ${comment.userId}")
+                        }
+                        
+                        override fun onError(e: Exception?) {
+                            Log.e("CommentsAdapter", "Error loading profile image from cache: ${e?.message}")
+                            // Try loading with network as fallback
+                            com.squareup.picasso.Picasso.get()
+                                .load(comment.userPhotoUrl)
+                                .transform(com.eaor.coffeefee.utils.CircleTransform())
+                                .placeholder(R.drawable.default_avatar)
+                                .error(R.drawable.default_avatar)
+                                .into(holder.userImage)
+                        }
+                    })
             } else {
                 Log.d("CommentsAdapter", "No profile image URL for user: ${comment.userId}")
                 // Load default placeholder image
-                Glide.with(context)
-                    .load(R.drawable.default_avatar)
-                    .apply(RequestOptions.circleCropTransform())
-                    .into(holder.userImage)
+                holder.userImage.setImageResource(R.drawable.default_avatar)
             }
         } catch (e: Exception) {
             Log.e("CommentsAdapter", "Error loading profile image: ${e.message}")
             // Fallback in case of any error
-            Glide.with(context)
-                .load(R.drawable.default_avatar)
-                .apply(RequestOptions.circleCropTransform())
-                .into(holder.userImage)
+            holder.userImage.setImageResource(R.drawable.default_avatar)
         }
     }
 
@@ -128,8 +140,38 @@ class CommentsAdapter(
     
     fun updateComments(newComments: MutableList<Comment>) {
         Log.d("CommentsAdapter", "Updating adapter with ${newComments.size} comments")
+        
+        // Debug each comment in the new list
+        newComments.forEachIndexed { index, comment ->
+            Log.d("CommentsAdapter", "Comment[$index]: id=${comment.id}, text='${comment.text}', user=${comment.userName}")
+        }
+        
+        // Use DiffUtil to calculate changes instead of full notifyDataSetChanged
+        val diffResult = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
+            override fun getOldListSize(): Int = comments.size
+            override fun getNewListSize(): Int = newComments.size
+            
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                return comments[oldItemPosition].id == newComments[newItemPosition].id
+            }
+            
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                val oldComment = comments[oldItemPosition]
+                val newComment = newComments[newItemPosition]
+                return oldComment.text == newComment.text && 
+                       oldComment.userName == newComment.userName &&
+                       oldComment.userPhotoUrl == newComment.userPhotoUrl
+            }
+        })
+        
         this.comments = newComments
-        notifyDataSetChanged()
+        diffResult.dispatchUpdatesTo(this)
+        
+        // Force refresh the entire adapter if there are issues with DiffUtil
+        if (itemCount > 0 && newComments.size > 0 && itemCount != newComments.size) {
+            Log.d("CommentsAdapter", "Forcing full refresh due to size mismatch")
+            notifyDataSetChanged()
+        }
     }
     
     /**
@@ -139,6 +181,16 @@ class CommentsAdapter(
     fun updateUserData(userId: String, userName: String, userPhotoUrl: String?) {
         Log.d("CommentsAdapter", "Updating user data for $userId: name=$userName, photo=$userPhotoUrl")
         var updatedCount = 0
+        
+        // Force Picasso to invalidate the cache for this URL to ensure fresh images
+        if (userPhotoUrl != null && userPhotoUrl.isNotEmpty()) {
+            try {
+                com.squareup.picasso.Picasso.get().invalidate(userPhotoUrl)
+                Log.d("CommentsAdapter", "Invalidated Picasso cache for $userPhotoUrl")
+            } catch (e: Exception) {
+                Log.e("CommentsAdapter", "Failed to invalidate Picasso cache: ${e.message}")
+            }
+        }
         
         // Find all comments by this user and update them
         for (i in comments.indices) {
