@@ -50,6 +50,9 @@ import android.content.Intent
 import android.content.Context
 import com.eaor.coffeefee.GlobalState
 import android.content.SharedPreferences
+import com.google.android.material.button.MaterialButton
+import com.squareup.picasso.Callback
+import java.net.URLDecoder
 
 class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var bottomNav: View
@@ -61,10 +64,12 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var saveButton: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var changePhotoText: TextView
+    private lateinit var removePhotoButton: MaterialButton
     private var selectedImageUri: Uri? = null
     private lateinit var storage: FirebaseStorage
     private lateinit var viewModel: UserViewModel
     private lateinit var sharedPreferences: SharedPreferences
+    private var isRemovingPhoto = false
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -84,6 +89,9 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             // Show a checkmark or indicator that a new image has been selected
             changePhotoText.text = "New photo selected"
             changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_primary))
+            
+            // Show the remove button since we now have a photo
+            removePhotoButton.visibility = View.VISIBLE
             
             // Hide the URL field but keep the email note visible
             view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
@@ -131,6 +139,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         saveButton = view.findViewById(R.id.saveButton)
         progressBar = view.findViewById(R.id.progressBar)
         changePhotoText = view.findViewById(R.id.changePhotoText)
+        removePhotoButton = view.findViewById(R.id.removePhotoButton)
 
         // Initially hide progress bar
         progressBar.visibility = GONE
@@ -167,19 +176,16 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             editUserName.setText(userName)
             editUserEmail.setText(userEmail)
             
-            // Load image from passed URL
-            if (userPhotoUrl.isNotEmpty()) {
-                Picasso.get()
-                    .load(userPhotoUrl)
-                    .fit()
-                    .centerInside()
-                    .transform(CircleTransform())
-                    .placeholder(R.drawable.default_avatar)
-                    .error(R.drawable.default_avatar)
-                    .into(profileImageView)
-            } else {
-                profileImageView.setImageResource(R.drawable.default_avatar)
-            }
+            // Store the photo URL in the ViewModel so loadProfilePicture can access it
+            viewModel.updateUserDataValue(User(
+                uid = auth.currentUser?.uid ?: "",
+                name = userName,
+                email = userEmail,
+                profilePhotoUrl = userPhotoUrl
+            ))
+            
+            // Load the profile picture with proper remove button visibility
+            loadProfilePicture()
             
             Log.d("ProfileFragment", "Using prefilled user data: $userName, $userEmail, $userPhotoUrl")
         } else {
@@ -225,43 +231,8 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                     visibility = GONE
                 }
 
-                // Set default text for change photo
-                changePhotoText.text = "Tap to change profile photo"
-                changePhotoText.setTextColor(ContextCompat.getColor(requireContext(), R.color.coffee_primary))
-                changePhotoText.visibility = VISIBLE
-
-                // Load profile picture if exists
-                if (!it.profilePhotoUrl.isNullOrEmpty()) {
-                    Picasso.get()
-                        .load(it.profilePhotoUrl)
-                        .networkPolicy(com.squareup.picasso.NetworkPolicy.OFFLINE)
-                        .fit()
-                        .centerInside()
-                        .transform(CircleTransform())
-                        .placeholder(R.drawable.default_avatar)
-                        .error(R.drawable.default_avatar)
-                        .into(profileImageView, object : com.squareup.picasso.Callback {
-                            override fun onSuccess() {
-                                Log.d("ProfileFragment", "Successfully loaded profile image from cache")
-                            }
-                            
-                            override fun onError(e: Exception?) {
-                                Log.e("ProfileFragment", "Error loading profile image from cache: ${e?.message}")
-                                // Try loading from network as fallback
-                                Picasso.get()
-                                    .load(it.profilePhotoUrl)
-                                    .fit()
-                                    .centerInside()
-                                    .transform(CircleTransform())
-                                    .placeholder(R.drawable.default_avatar)
-                                    .error(R.drawable.default_avatar)
-                                    .into(profileImageView)
-                            }
-                        })
-                } else {
-                    // User has no profile image, set default
-                    profileImageView.setImageResource(R.drawable.default_avatar)
-                }
+                // Load and display the user's profile picture
+                loadProfilePicture()
             }
         }
         
@@ -311,6 +282,20 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             imagePickerLauncher.launch("image/*")
         }
 
+        // Add click listener for remove photo button
+        removePhotoButton.setOnClickListener {
+            // Set selectedImageUri to null to indicate photo removal
+            selectedImageUri = null
+            // Update UI to show default image
+            profileImageView.setImageResource(R.drawable.default_avatar)
+            // Hide remove button when default is shown
+            removePhotoButton.visibility = View.GONE
+            // Update the button text to reflect the removal
+            changePhotoText.text = "Tap to add profile photo"
+            // Set a flag to indicate we're removing the photo
+            isRemovingPhoto = true
+        }
+
         saveButton.setOnClickListener {
             saveUserData()
         }
@@ -320,37 +305,21 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         val newName = editUserName.text.toString().trim()
         // Get current email from the field, but we won't actually change it
         val currentEmail = editUserEmail.text.toString().trim()
-
-        Log.d("ProfileFragment", "Saving user data: name=$newName")
-
-        if (newName.isBlank()) {
-            editUserName.error = "Name cannot be empty"
-            return
-        }
-
-        // Show loading message
-        Toast.makeText(context, "Saving profile...", Toast.LENGTH_SHORT).show()
-
-        // If a new image was selected, upload it first
-        if (selectedImageUri != null) {
-            Log.d("ProfileFragment", "Uploading new profile image")
-            
-            // Hide the URL field
-            view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
-            
-            // Use modified method that passes name and current email
-            selectedImageUri?.let { uri ->
-                uploadProfileImageWithUserData(uri, newName, currentEmail)
-            }
-        } else {
-            Log.d("ProfileFragment", "Updating user data without new image")
-            // No new image, just update the name (email will remain unchanged in ViewModel)
-            viewModel.updateUserData(newName, currentEmail)
-        }
         
-        // Notify all listening ViewModels that profile has been updated
-        // This helps ensure all UI components showing user data get refreshed
-        notifyProfileUpdated()
+        Toast.makeText(context, "Saving profile...", Toast.LENGTH_SHORT).show()
+        
+        if (selectedImageUri != null) {
+            // Upload new image and update user data
+            uploadProfileImageWithUserData(selectedImageUri!!, newName, currentEmail)
+        } else if (isRemovingPhoto) {
+            // Remove profile photo and update user data
+            viewModel.removeProfilePhoto(newName, currentEmail)
+            // Reset flag
+            isRemovingPhoto = false
+        } else {
+            // Just update user data without changing photo
+            viewModel.updateUserData(newName, currentEmail, null)
+        }
     }
 
     /**
@@ -382,16 +351,47 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private fun uploadProfileImageWithUserData(imageUri: Uri, name: String, email: String) {
         val userId = auth.currentUser?.uid ?: return
         
-        // Show progress indicators
-        progressBar.visibility = VISIBLE
-        saveButton.isEnabled = false
+        // First check if user has existing profile image to delete
+        val currentUserPhotoUrl = viewModel.userData.value?.profilePhotoUrl
+        if (currentUserPhotoUrl != null && currentUserPhotoUrl.isNotEmpty() && !currentUserPhotoUrl.contains("default_avatar")) {
+            try {
+                // Delete old image from storage
+                val storageRef = storage.reference
+                
+                // Handle both https and gs URLs
+                val oldPhotoRef = if (currentUserPhotoUrl.startsWith("https://")) {
+                    // Extract path from https URL
+                    val path = currentUserPhotoUrl.substringAfter("o/").substringBefore("?")
+                    // URL decode path
+                    val decodedPath = java.net.URLDecoder.decode(path, "UTF-8")
+                    storageRef.child(decodedPath)
+                } else if (currentUserPhotoUrl.startsWith("gs://")) {
+                    // Extract path from gs URL
+                    val bucket = currentUserPhotoUrl.substringAfter("gs://").substringBefore("/")
+                    val path = currentUserPhotoUrl.substringAfter(bucket + "/")
+                    storage.getReferenceFromUrl(currentUserPhotoUrl)
+                } else {
+                    // Not a valid URL to delete
+                    null
+                }
+                
+                oldPhotoRef?.delete()?.addOnSuccessListener {
+                    Log.d("ProfileFragment", "Successfully deleted old profile photo")
+                }?.addOnFailureListener { e ->
+                    Log.e("ProfileFragment", "Failed to delete old profile photo: ${e.message}")
+                }
+            } catch (e: Exception) {
+                Log.e("ProfileFragment", "Error during old photo deletion: ${e.message}")
+            }
+        }
         
-        // Create a unique filename
-        val timestamp = System.currentTimeMillis()
-        val filename = "profile_${timestamp}_${UUID.randomUUID()}.jpg"
-        
-        // Get a reference to Firebase Storage
+        // Create a unique filename for the image
+        val filename = "profile_${userId}_${System.currentTimeMillis()}.jpg"
         val storageRef = storage.reference.child("Users").child(userId).child(filename)
+        
+        // Set visibility
+        progressBar.visibility = View.VISIBLE
+        saveButton.isEnabled = false
         
         // Start the upload
         val uploadTask = storageRef.putFile(imageUri)
@@ -402,30 +402,23 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             progressBar.progress = progress
         }
         
-        // Handle completion
+        // Handle success
         uploadTask.continueWithTask { task ->
             if (!task.isSuccessful) {
                 throw task.exception ?: Exception("Unknown error during upload")
             }
             storageRef.downloadUrl
-        }.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val downloadUrl = task.result.toString()
-                Log.d("ProfileFragment", "Image uploaded successfully. URL: $downloadUrl")
-                
-                // Now update the user data with all fields
-                viewModel.updateUserData(name, email, downloadUrl)
-            } else {
-                Log.e("ProfileFragment", "Upload failed: ${task.exception?.message}")
-                Toast.makeText(context, "Failed to upload image: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
-                progressBar.visibility = View.GONE
-                saveButton.isEnabled = true
-            }
+        }.addOnSuccessListener { downloadUri ->
+            // Now update the user data with the new photo URL
+            viewModel.updateUserData(name, email, downloadUri.toString())
+            saveButton.isEnabled = true
+            progressBar.visibility = View.GONE
         }.addOnFailureListener { e ->
-            Log.e("ProfileFragment", "Upload failed: ${e.message}")
-            Toast.makeText(context, "Upload failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            // Handle failure
             progressBar.visibility = View.GONE
             saveButton.isEnabled = true
+            Log.e("ProfileFragment", "Error uploading image: ${e.message}")
+            Toast.makeText(context, "Failed to upload image: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -467,6 +460,44 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                     }
                 }
             }
+        }
+    }
+
+    private fun loadProfilePicture() {
+        val userPhotoUrl = viewModel.userData.value?.profilePhotoUrl ?: ""
+        Log.d("ProfileFragment", "Loading profile picture with URL: $userPhotoUrl")
+
+        if (userPhotoUrl.isEmpty() || userPhotoUrl.endsWith("default_avatar")) {
+            // If no photo URL or it's the default avatar, use default and hide remove button
+            profileImageView.setImageResource(R.drawable.default_avatar)
+            removePhotoButton.visibility = View.GONE
+            changePhotoText.text = "Tap to add profile photo"
+        } else {
+            // Otherwise, load photo from URL and show remove button
+            removePhotoButton.visibility = View.VISIBLE
+            changePhotoText.text = "Tap to change photo"
+            
+            Picasso.get()
+                .load(userPhotoUrl)
+                .fit()
+                .centerInside()
+                .transform(CircleTransform())
+                .placeholder(R.drawable.default_avatar)
+                .error(R.drawable.default_avatar)
+                .into(profileImageView, object : Callback {
+                    override fun onSuccess() {
+                        // Photo loaded successfully
+                        removePhotoButton.visibility = View.VISIBLE
+                    }
+
+                    override fun onError(e: Exception?) {
+                        // Show error state - hide remove button if image failed to load
+                        profileImageView.setImageResource(R.drawable.default_avatar)
+                        removePhotoButton.visibility = View.GONE
+                        changePhotoText.text = "Tap to add profile photo"
+                        e?.let { Log.e("ProfileFragment", "Error loading profile image", it) }
+                    }
+                })
         }
     }
 }

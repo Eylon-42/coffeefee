@@ -271,8 +271,33 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
                 
+                // First, get the post to check for image URL
+                val postSnapshot = db.collection("Posts").document(postId).get().await()
+                val photoUrl = postSnapshot.getString("photoUrl")
+                
                 // Delete from Firestore first
                 db.collection("Posts").document(postId).delete().await()
+                
+                // Delete the image from Firebase Storage if exists
+                if (!photoUrl.isNullOrEmpty()) {
+                    try {
+                        // Extract the filename from the URL
+                        // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/bucket/o/Posts%2Ffilename.jpg?token...
+                        val decodedUrl = Uri.decode(photoUrl)
+                        val filenameWithPath = decodedUrl.substringAfter("/o/").substringBefore("?")
+                        Log.d("ProfileViewModel", "Extracted image path: $filenameWithPath")
+                        
+                        // Use the full path from the URL instead of assuming Posts/$postId.jpg
+                        val storage = FirebaseStorage.getInstance()
+                        val storageRef = storage.reference.child(filenameWithPath)
+                        
+                        storageRef.delete().await()
+                        Log.d("ProfileViewModel", "Successfully deleted image from storage: $filenameWithPath")
+                    } catch (e: Exception) {
+                        Log.e("ProfileViewModel", "Error deleting image from storage: ${e.message}")
+                        // Continue with post deletion even if image deletion fails
+                    }
+                }
                 
                 // Then delete from local Room database to keep them in sync
                 feedRepository.deleteFeedItem(postId)

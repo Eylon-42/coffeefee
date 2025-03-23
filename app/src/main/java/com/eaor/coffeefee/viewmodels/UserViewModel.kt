@@ -1,5 +1,7 @@
 package com.eaor.coffeefee.viewmodels
 
+import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -10,10 +12,12 @@ import com.eaor.coffeefee.data.User
 import com.eaor.coffeefee.repositories.FeedRepository
 import com.eaor.coffeefee.repositories.UserRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
+import com.eaor.coffeefee.GlobalState
 
 class UserViewModel : ViewModel() {
     private val storage = FirebaseStorage.getInstance()
@@ -217,5 +221,105 @@ class UserViewModel : ViewModel() {
     // Add a setter method to update the user data from outside
     fun updateUserDataValue(user: User?) {
         _userData.value = user
+    }
+    
+    /**
+     * Remove the user's profile photo and set it to default
+     */
+    fun removeProfilePhoto(name: String, email: String) {
+        _isLoading.value = true
+        _errorMessage.value = null
+        
+        viewModelScope.launch {
+            try {
+                // Check if user is authenticated
+                val user = auth.currentUser ?: throw Exception("User not authenticated")
+                val userId = user.uid
+                
+                // Get user's current profile photo URL
+                val currentUser = userRepository.getUserData(userId)
+                val currentPhotoUrl = currentUser?.profilePhotoUrl
+                
+                // Only attempt to delete if we have a URL and it's not a default avatar
+                if (currentPhotoUrl != null && currentPhotoUrl.isNotEmpty() && !currentPhotoUrl.contains("default_avatar")) {
+                    try {
+                        // Delete old image from storage
+                        val storageRef = storage.reference
+                        
+                        // Handle both https and gs URLs
+                        val oldPhotoRef = if (currentPhotoUrl.startsWith("https://")) {
+                            // Extract path from https URL
+                            val path = currentPhotoUrl.substringAfter("o/").substringBefore("?")
+                            // URL decode path
+                            val decodedPath = java.net.URLDecoder.decode(path, "UTF-8")
+                            storageRef.child(decodedPath)
+                        } else if (currentPhotoUrl.startsWith("gs://")) {
+                            // Extract path from gs URL
+                            storage.getReferenceFromUrl(currentPhotoUrl)
+                        } else {
+                            // Not a valid URL to delete
+                            null
+                        }
+                        
+                        oldPhotoRef?.delete()?.await()
+                        Log.d("UserViewModel", "Successfully deleted old profile photo")
+                    } catch (e: Exception) {
+                        Log.e("UserViewModel", "Error deleting old profile photo: ${e.message}")
+                        // Continue with the update even if delete fails
+                    }
+                }
+                
+                // Update user's profile in Firebase Auth
+                val profileUpdates = UserProfileChangeRequest.Builder()
+                    .setDisplayName(name)
+                    .setPhotoUri(null) // Remove photo URL
+                    .build()
+                
+                user.updateProfile(profileUpdates).await()
+                
+                // Update user document with the updatedUser object
+                val updatedUser = User(
+                    uid = userId,
+                    name = name,
+                    email = email,
+                    profilePhotoUrl = ""
+                )
+                userRepository.updateUser(updatedUser)
+                
+                // Clear cache to ensure fresh data
+                userRepository.clearUserCache(userId)
+                
+                // Refresh user data in posts
+                feedRepository.refreshUserDataInAllPosts(userId)
+                
+                // Send notification about profile update
+                sendProfileUpdatedBroadcast(userId)
+                
+                // Set success state
+                _updateSuccess.value = true
+                _isLoading.value = false
+            } catch (e: Exception) {
+                Log.e("UserViewModel", "Error removing profile photo: ${e.message}")
+                _errorMessage.value = "Failed to remove profile photo: ${e.message}"
+                _isLoading.value = false
+                _updateSuccess.value = false
+            }
+        }
+    }
+    
+    // Helper function to send profile updated broadcast
+    private fun sendProfileUpdatedBroadcast(userId: String) {
+        // Create the intent that would be broadcast
+        val intent = Intent("com.eaor.coffeefee.PROFILE_UPDATED")
+        intent.putExtra("userId", userId)
+        intent.putExtra("timestamp", System.currentTimeMillis())
+        
+        // Note: We can't actually send the broadcast without a context
+        // This would normally be handled by the fragment or activity
+        Log.d("UserViewModel", "Profile updated for user: $userId")
+        
+        // Set a flag to indicate profile was updated
+        GlobalState.shouldRefreshProfile = true
+        GlobalState.shouldRefreshFeed = true
     }
 } 

@@ -316,7 +316,9 @@ class FeedAdapter(
             locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load user avatar with improved caching settings
+            // Load user avatar
+            val userAvatar = itemView.findViewById<ImageView>(R.id.userAvatar)
+            // Use existing ImageLoader method to maintain compatibility
             ImageLoader.loadProfileImage(userAvatar, feedItem.userPhotoUrl)
             
             // Load post photo

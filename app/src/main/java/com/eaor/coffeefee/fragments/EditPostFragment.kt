@@ -80,6 +80,10 @@ class EditPostFragment : Fragment() {
         uri?.let {
             imageUri = it
             imageView.visibility = View.VISIBLE
+            // Show remove button when an image is selected
+            view?.findViewById<Button>(R.id.removeImageButton)?.visibility = View.VISIBLE
+            
+            // No need for placeholder, directly load the selected image
             Picasso.get()
                 .load(uri)
                 .into(imageView)
@@ -101,6 +105,9 @@ class EditPostFragment : Fragment() {
         bottomNav?.visibility = View.GONE
 
         db = FirebaseFirestore.getInstance()
+        
+        // Initialize imageView early
+        imageView = view.findViewById(R.id.imageView)
         
         setupToolbar(view)
         loadPostData(view)
@@ -157,9 +164,16 @@ class EditPostFragment : Fragment() {
 
             // Load image if URL exists
             currentImageUrl?.let { url ->
+                Log.d("EditPostFragment", "Loading image from direct arguments: $url")
+                imageView.visibility = View.VISIBLE
+                view.findViewById<Button>(R.id.removeImageButton).visibility = View.VISIBLE
                 Picasso.get()
                     .load(url)
-                    .into(view.findViewById<ImageView>(R.id.imageView))
+                    .into(imageView)
+            } ?: run {
+                // No image URL, hide the ImageView
+                imageView.visibility = View.GONE
+                view.findViewById<Button>(R.id.removeImageButton).visibility = View.GONE
             }
         } else {
             // No direct data, fetch from Firestore
@@ -186,10 +200,18 @@ class EditPostFragment : Fragment() {
 
                         // Load image
                         currentImageUrl = document.getString("photoUrl")
-                        currentImageUrl?.let { url ->
+                        Log.d("EditPostFragment", "Image URL from Firestore: $currentImageUrl")
+                        if (!currentImageUrl.isNullOrEmpty()) {
+                            Log.d("EditPostFragment", "Loading image from Firestore: $currentImageUrl")
+                            imageView.visibility = View.VISIBLE
+                            view.findViewById<Button>(R.id.removeImageButton).visibility = View.VISIBLE
                             Picasso.get()
-                                .load(url)
-                                .into(view.findViewById<ImageView>(R.id.imageView))
+                                .load(currentImageUrl)
+                                .into(imageView)
+                        } else {
+                            // No image URL, hide the ImageView
+                            imageView.visibility = View.GONE
+                            view.findViewById<Button>(R.id.removeImageButton).visibility = View.GONE
                         }
                     }
                 }
@@ -200,11 +222,26 @@ class EditPostFragment : Fragment() {
     }
 
     private fun setupButtons(view: View) {
-        imageView = view.findViewById(R.id.imageView)
+        // ImageView is already initialized in onViewCreated
         
-        // Hide imageView if no image
-        if (currentImageUrl == null) {
+        // Set initial visibility based on whether we have an image
+        imageView.visibility = if (currentImageUrl.isNullOrEmpty()) View.GONE else View.VISIBLE
+
+        // Add Remove Image button
+        val removeImageButton = view.findViewById<Button>(R.id.removeImageButton)
+        
+        // Set remove button visibility based on whether we have an image
+        val hasImage = !currentImageUrl.isNullOrEmpty()
+        Log.d("EditPostFragment", "Setting initial removeImageButton visibility: ${if (hasImage) "VISIBLE" else "GONE"}, currentImageUrl: $currentImageUrl")
+        removeImageButton.visibility = if (hasImage) View.VISIBLE else View.GONE
+        
+        // Set up remove image button click listener
+        removeImageButton.setOnClickListener {
+            // Clear the image URI and hide the image view
+            imageUri = null
+            currentImageUrl = null
             imageView.visibility = View.GONE
+            removeImageButton.visibility = View.GONE
         }
 
         // Location button
@@ -274,25 +311,114 @@ class EditPostFragment : Fragment() {
 
         // Handle image update
         if (imageUri != null) {
+            // User selected a new image
             uploadImageAndUpdatePost(updateData, progressDialog)
+        } else if (currentImageUrl == null) {
+            // User removed the image
+            updateData["photoUrl"] = FieldValue.delete()
+            deleteOldImageAndUpdatePost(updateData, progressDialog)
         } else {
+            // No changes to image
             updatePostInFirestore(updateData, progressDialog)
         }
     }
 
-    private fun uploadImageAndUpdatePost(updateData: HashMap<String, Any>, progressDialog: android.app.ProgressDialog) {
-        val storageRef = FirebaseStorage.getInstance().reference.child("post_images/$postId.jpg")
-
-        storageRef.putFile(imageUri!!)
-            .addOnSuccessListener {
-                storageRef.downloadUrl.addOnSuccessListener { uri ->
-                    updateData["photoUrl"] = uri.toString()
+    private fun deleteOldImageAndUpdatePost(updateData: HashMap<String, Any>, progressDialog: android.app.ProgressDialog) {
+        // First check if post already has an image
+        db.collection("Posts").document(postId).get()
+            .addOnSuccessListener { documentSnapshot ->
+                val existingPhotoUrl = documentSnapshot.getString("photoUrl")
+                
+                // Delete the old image if it exists
+                if (!existingPhotoUrl.isNullOrEmpty()) {
+                    try {
+                        // Extract the filename from the URL
+                        val decodedUrl = Uri.decode(existingPhotoUrl)
+                        val filenameWithPath = decodedUrl.substringAfter("/o/").substringBefore("?")
+                        Log.d("EditPostFragment", "Deleting image: $filenameWithPath")
+                        
+                        // Delete the old image
+                        val storage = FirebaseStorage.getInstance()
+                        val oldImageRef = storage.reference.child(filenameWithPath)
+                        
+                        oldImageRef.delete()
+                            .addOnSuccessListener {
+                                Log.d("EditPostFragment", "Successfully deleted image: $filenameWithPath")
+                                // Continue with post update
+                                updatePostInFirestore(updateData, progressDialog)
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("EditPostFragment", "Failed to delete image: ${e.message}")
+                                // Continue with the post update regardless
+                                updatePostInFirestore(updateData, progressDialog)
+                            }
+                    } catch (e: Exception) {
+                        Log.e("EditPostFragment", "Error processing image URL: ${e.message}")
+                        // Continue with the post update regardless
+                        updatePostInFirestore(updateData, progressDialog)
+                    }
+                } else {
+                    // No existing image to delete
                     updatePostInFirestore(updateData, progressDialog)
                 }
             }
             .addOnFailureListener { e ->
                 progressDialog.dismiss()
-                Toast.makeText(context, "Error uploading image: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Error checking post data: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun uploadImageAndUpdatePost(updateData: HashMap<String, Any>, progressDialog: android.app.ProgressDialog) {
+        // First check if post already has an image
+        db.collection("Posts").document(postId).get()
+            .addOnSuccessListener { documentSnapshot ->
+                val existingPhotoUrl = documentSnapshot.getString("photoUrl")
+                
+                // Try to delete the old image if it exists
+                if (!existingPhotoUrl.isNullOrEmpty()) {
+                    try {
+                        // Extract the filename from the URL
+                        val decodedUrl = Uri.decode(existingPhotoUrl)
+                        val filenameWithPath = decodedUrl.substringAfter("/o/").substringBefore("?")
+                        Log.d("EditPostFragment", "Old image path: $filenameWithPath")
+                        
+                        // Delete the old image
+                        val storage = FirebaseStorage.getInstance()
+                        val oldImageRef = storage.reference.child(filenameWithPath)
+                        
+                        oldImageRef.delete()
+                            .addOnSuccessListener {
+                                Log.d("EditPostFragment", "Successfully deleted old image: $filenameWithPath")
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("EditPostFragment", "Failed to delete old image: ${e.message}")
+                                // Continue with the upload regardless
+                            }
+                    } catch (e: Exception) {
+                        Log.e("EditPostFragment", "Error processing old image URL: ${e.message}")
+                        // Continue with the upload regardless
+                    }
+                }
+                
+                // Generate a new unique filename for the image
+                val newImageName = UUID.randomUUID().toString()
+                val storageRef = FirebaseStorage.getInstance().reference.child("Posts/$newImageName.jpg")
+                
+                storageRef.putFile(imageUri!!)
+                    .addOnSuccessListener {
+                        storageRef.downloadUrl.addOnSuccessListener { uri ->
+                            updateData["photoUrl"] = uri.toString()
+                            updatePostInFirestore(updateData, progressDialog)
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        progressDialog.dismiss()
+                        Toast.makeText(context, "Error uploading image: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            }
+            .addOnFailureListener { e ->
+                progressDialog.dismiss()
+                Toast.makeText(context, "Error checking post data: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -310,7 +436,7 @@ class EditPostFragment : Fragment() {
                     sendPostUpdatedBroadcast()
                     progressDialog.dismiss()
                     Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
-                    findNavController().navigateUp()
+                    navigateToUserProfile()
                 }
             }
             .addOnFailureListener { e ->
@@ -324,7 +450,7 @@ class EditPostFragment : Fragment() {
             sendPostUpdatedBroadcast()
             progressDialog.dismiss()
             Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
-            findNavController().navigateUp()
+            navigateToUserProfile()
             return
         }
         
@@ -366,6 +492,8 @@ class EditPostFragment : Fragment() {
                 
                 sendPostUpdatedBroadcast()
                 progressDialog.dismiss()
+                Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
+                navigateToUserProfile()
             }
             .addOnFailureListener { e ->
                 Log.e("EditPostFragment", "Error updating coffee shop: ${e.message}")
@@ -565,9 +693,12 @@ class EditPostFragment : Fragment() {
 
     // Method updated to upload photos to Firebase Storage
     private fun uploadPhotoToFirebase(bitmap: Bitmap, placeId: String, callback: (String?) -> Unit) {
+        // Resize bitmap to a reasonable size before uploading
+        val resizedBitmap = resizeBitmap(bitmap, 1200) // Resize to max 1200px on largest dimension
+        
         // Convert bitmap to byte array
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
         val imageData = baos.toByteArray()
         
         // Reference to storage location - using CoffeeShops folder as requested
@@ -593,5 +724,36 @@ class EditPostFragment : Fragment() {
             Log.e("EditPostFragment", "Error uploading image to Firebase Storage: ${e.message}")
             callback(null)
         }
+    }
+    
+    // Helper function to resize bitmap proportionally
+    private fun resizeBitmap(bitmap: Bitmap, maxSize: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        if (width <= maxSize && height <= maxSize) {
+            return bitmap // No need to resize
+        }
+        
+        val ratio = width.toFloat() / height.toFloat()
+        
+        val newWidth: Int
+        val newHeight: Int
+        
+        if (width > height) {
+            newWidth = maxSize
+            newHeight = (maxSize / ratio).toInt()
+        } else {
+            newHeight = maxSize
+            newWidth = (maxSize * ratio).toInt()
+        }
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+
+    // Helper method to navigate to user profile
+    private fun navigateToUserProfile() {
+        // Navigate to user profile fragment
+        findNavController().navigate(R.id.userProfileFragment)
     }
 }

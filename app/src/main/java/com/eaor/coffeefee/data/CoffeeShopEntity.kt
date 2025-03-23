@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.eaor.coffeefee.models.CoffeeShop
 
-@Entity(tableName = "coffee_shops")
+@Entity(tableName = "CoffeeShops")
 data class CoffeeShopEntity(
     @PrimaryKey
     val placeId: String,

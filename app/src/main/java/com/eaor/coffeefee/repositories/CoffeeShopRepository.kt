@@ -572,9 +572,12 @@ class CoffeeShopRepository private constructor(context: Context) {
                         val future = com.squareup.picasso.Picasso.get().load(photoUrl).get()
                         val bitmap = future
                         
+                        // Resize bitmap to a reasonable size before uploading
+                        val resizedBitmap = resizeBitmap(bitmap, 1200) // Resize to max 1200px on largest dimension
+                        
                         // Convert bitmap to byte array
                         val baos = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+                        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, baos)
                         val imageData = baos.toByteArray()
                         
                         // Upload to Firebase Storage
@@ -619,6 +622,25 @@ class CoffeeShopRepository private constructor(context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error in photo migration process: ${e.message}", e)
         }
+    }
+
+    private fun resizeBitmap(bitmap: Bitmap, maxSize: Int): Bitmap {
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
+        val aspectRatio = originalWidth.toFloat() / originalHeight.toFloat()
+        
+        var newWidth = originalWidth
+        var newHeight = originalHeight
+        
+        if (originalWidth > originalHeight) {
+            newWidth = maxSize
+            newHeight = (maxSize / aspectRatio).toInt()
+        } else {
+            newHeight = maxSize
+            newWidth = (maxSize * aspectRatio).toInt()
+        }
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 
     companion object {

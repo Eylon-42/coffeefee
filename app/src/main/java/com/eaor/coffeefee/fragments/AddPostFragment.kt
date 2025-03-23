@@ -590,10 +590,13 @@ class AddPostFragment : Fragment() {
 
     private fun uploadBitmapToFirebase(bitmap: Bitmap, placeId: String, callback: (String?) -> Unit) {
         val storage = FirebaseStorage.getInstance()
-        val storageRef = storage.reference.child("coffee_shops/$placeId.jpg")
+        val storageRef = storage.reference.child("CoffeeShops/$placeId.jpg")
+        
+        // Resize bitmap to a reasonable size before uploading
+        val resizedBitmap = resizeBitmap(bitmap, 1200) // Resize to max 1200px on largest dimension
         
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
         val data = baos.toByteArray()
         
         Log.d("AddPostFragment", "Uploading photo to Firebase for place ID: $placeId")
@@ -613,6 +616,31 @@ class AddPostFragment : Fragment() {
                 callback(null)
             }
         }
+    }
+
+    // Helper function to resize bitmap proportionally
+    private fun resizeBitmap(bitmap: Bitmap, maxSize: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        if (width <= maxSize && height <= maxSize) {
+            return bitmap // No need to resize
+        }
+        
+        val ratio = width.toFloat() / height.toFloat()
+        
+        val newWidth: Int
+        val newHeight: Int
+        
+        if (width > height) {
+            newWidth = maxSize
+            newHeight = (maxSize / ratio).toInt()
+        } else {
+            newHeight = maxSize
+            newWidth = (maxSize * ratio).toInt()
+        }
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 
     private fun saveCoffeeShopWithPhotoUrl(place: Place, placeId: String, photoUrl: String?) {

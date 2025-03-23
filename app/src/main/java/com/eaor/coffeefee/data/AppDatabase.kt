@@ -13,7 +13,7 @@ import androidx.room.TypeConverters
         CommentEntity::class,
         CoffeeShopEntity::class
     ], 
-    version = 8, 
+    version = 9, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
