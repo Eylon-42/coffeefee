@@ -46,17 +46,7 @@ class UserRepository(
                                 (currentTimeMillis - cachedUser.lastUpdatedTimestamp) < maxAgeMinutes * 60 * 1000
             
             if (shouldUseCache) {
-                Log.d("UserRepository", "Using cached user data for $userId (age: ${(currentTimeMillis - cachedUser!!.lastUpdatedTimestamp) / (60 * 1000)} min)")
                 return@withContext cachedUser
-            }
-            
-            // Log why we're not using cache
-            if (cachedUser == null) {
-                Log.d("UserRepository", "No cached user data for $userId, fetching from Firestore")
-            } else if (cachedUser.name.isNullOrEmpty()) {
-                Log.d("UserRepository", "Cached user data for $userId has empty name, fetching from Firestore")
-            } else if (forceRefresh) {
-                Log.d("UserRepository", "Force refresh requested for user $userId, fetching from Firestore")
             }
             
             // If not in cache or force refresh, fetch from Firestore
@@ -69,7 +59,6 @@ class UserRepository(
                     
                     // If Firestore has no name but we have a cached name, keep using the cache
                     if (cachedUser != null && !cachedUser.name.isNullOrEmpty()) {
-                        Log.d("UserRepository", "Using cached name for user $userId despite Firestore empty name")
                         return@withContext cachedUser
                     }
                     
@@ -102,7 +91,6 @@ class UserRepository(
                 if ((hasChanged || forceRefresh) && profileUrl.isNotEmpty()) {
                     try {
                         // Invalidate regardless of cache state when forceRefresh is true
-                        Log.d("UserRepository", "Profile photo URL for user $userId, invalidating Picasso cache")
                         com.squareup.picasso.Picasso.get().invalidate(profileUrl)
                     } catch (e: Exception) {
                         Log.e("UserRepository", "Error invalidating Picasso cache: ${e.message}")
@@ -112,16 +100,12 @@ class UserRepository(
                 // Save to Room database
                 userDao.insertUser(user)
                 
-                Log.d("UserRepository", "Updated user data for $userId in Room database" + 
-                    (if (hasChanged) " (data changed)" else " (no changes)"))
-                
                 return@withContext user
             } else {
                 Log.e("UserRepository", "User not found in Firestore: $userId")
                 
                 // If not in Firestore but we have cached data, return that rather than null
                 if (cachedUser != null) {
-                    Log.d("UserRepository", "Using cached data for user $userId not found in Firestore")
                     return@withContext cachedUser
                 }
                 
@@ -137,7 +121,6 @@ class UserRepository(
                 try {
                     val cachedUser = userDao.getUserById(userId)
                     if (cachedUser != null) {
-                        Log.d("UserRepository", "Returning cached user due to fetch error")
                         return@withContext cachedUser
                     }
                 } catch (e2: Exception) {

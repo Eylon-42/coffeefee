@@ -35,16 +35,6 @@ class CommentsAdapter(
     override fun onBindViewHolder(holder: CommentViewHolder, position: Int) {
         val comment = comments[position]
         
-        // Enhanced logging for debugging
-        Log.d("CommentsAdapter", "=== BINDING COMMENT ===")
-        Log.d("CommentsAdapter", "Binding comment at position $position:")
-        Log.d("CommentsAdapter", "  -> id: ${comment.id}")
-        Log.d("CommentsAdapter", "  -> postId: ${comment.postId}")
-        Log.d("CommentsAdapter", "  -> userId: ${comment.userId}")
-        Log.d("CommentsAdapter", "  -> userName: '${comment.userName}'")
-        Log.d("CommentsAdapter", "  -> photoUrl: ${comment.userPhotoUrl}")
-        Log.d("CommentsAdapter", "  -> text: ${comment.text}")
-        
         // Set comment text - ALWAYS set this even if empty
         holder.commentText.text = comment.text.ifEmpty { "[Empty comment]" }
         
@@ -75,8 +65,6 @@ class CommentsAdapter(
         
         try {
             if (comment.userPhotoUrl != null && comment.userPhotoUrl!!.isNotEmpty()) {
-                Log.d("CommentsAdapter", "Loading profile image: ${comment.userPhotoUrl}")
-                
                 // Try loading from cache first
                 com.squareup.picasso.Picasso.get()
                     .load(comment.userPhotoUrl)
@@ -87,7 +75,6 @@ class CommentsAdapter(
                     .into(holder.userImage, object : com.squareup.picasso.Callback {
                         override fun onSuccess() {
                             // Image loaded successfully from cache
-                            Log.d("CommentsAdapter", "Successfully loaded image from cache for ${comment.userId}")
                         }
                         
                         override fun onError(e: Exception?) {
@@ -102,7 +89,6 @@ class CommentsAdapter(
                         }
                     })
             } else {
-                Log.d("CommentsAdapter", "No profile image URL for user: ${comment.userId}")
                 // Load default placeholder image
                 holder.userImage.setImageResource(R.drawable.default_avatar)
             }
@@ -139,13 +125,6 @@ class CommentsAdapter(
     override fun getItemCount() = comments.size
     
     fun updateComments(newComments: MutableList<Comment>) {
-        Log.d("CommentsAdapter", "Updating adapter with ${newComments.size} comments")
-        
-        // Debug each comment in the new list
-        newComments.forEachIndexed { index, comment ->
-            Log.d("CommentsAdapter", "Comment[$index]: id=${comment.id}, text='${comment.text}', user=${comment.userName}")
-        }
-        
         // Use DiffUtil to calculate changes instead of full notifyDataSetChanged
         val diffResult = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
             override fun getOldListSize(): Int = comments.size
@@ -169,7 +148,6 @@ class CommentsAdapter(
         
         // Force refresh the entire adapter if there are issues with DiffUtil
         if (itemCount > 0 && newComments.size > 0 && itemCount != newComments.size) {
-            Log.d("CommentsAdapter", "Forcing full refresh due to size mismatch")
             notifyDataSetChanged()
         }
     }
@@ -179,14 +157,12 @@ class CommentsAdapter(
      * This is called when user profile data changes
      */
     fun updateUserData(userId: String, userName: String, userPhotoUrl: String?) {
-        Log.d("CommentsAdapter", "Updating user data for $userId: name=$userName, photo=$userPhotoUrl")
         var updatedCount = 0
         
         // Force Picasso to invalidate the cache for this URL to ensure fresh images
         if (userPhotoUrl != null && userPhotoUrl.isNotEmpty()) {
             try {
                 com.squareup.picasso.Picasso.get().invalidate(userPhotoUrl)
-                Log.d("CommentsAdapter", "Invalidated Picasso cache for $userPhotoUrl")
             } catch (e: Exception) {
                 Log.e("CommentsAdapter", "Failed to invalidate Picasso cache: ${e.message}")
             }
@@ -203,17 +179,12 @@ class CommentsAdapter(
                 updatedCount++
             }
         }
-        
-        Log.d("CommentsAdapter", "Updated $updatedCount comments with new user data")
     }
     
     fun refreshUser(userId: String) {
-        Log.d("CommentsAdapter", "Refreshing user data for: $userId")
-        
         // Find all comments by this user and signal they may need refresh
         comments.forEachIndexed { index, comment ->
             if (comment.userId == userId) {
-                Log.d("CommentsAdapter", "User $userId has comment at position $index, refreshing")
                 notifyItemChanged(index)
             }
         }

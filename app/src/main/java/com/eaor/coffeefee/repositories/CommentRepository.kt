@@ -41,8 +41,6 @@ class CommentRepository(
         val dbSource = commentDao.getCommentsForPostLive(postId)
         
         result.addSource(dbSource) { commentEntities ->
-            Log.d(TAG, "Room provided ${commentEntities.size} comments for post $postId")
-            
             // Convert entities to domain models
             CoroutineScope(Dispatchers.IO).launch {
                 val commentsWithUserData = loadUserDataForComments(commentEntities)
@@ -79,7 +77,6 @@ class CommentRepository(
                 snapshot?.let { querySnapshot ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            Log.d(TAG, "Got snapshot with ${querySnapshot.documents.size} comments")
                             val comments = querySnapshot.documents.mapNotNull { doc ->
                                 try {
                                     Comment(
@@ -98,15 +95,12 @@ class CommentRepository(
                             }
                             
                             if (comments.isEmpty()) {
-                                Log.d(TAG, "No comments received from Firestore")
                                 return@launch
                             }
                             
                             // Save to Room database
                             val entities = comments.map { CommentEntity.fromComment(it) }
                             commentDao.insertComments(entities)
-                            
-                            Log.d(TAG, "Updated Room with ${entities.size} comments from Firestore")
                             
                             // We don't need to manually update the LiveData
                             // Room will trigger the observer we set up earlier
@@ -128,10 +122,7 @@ class CommentRepository(
         val result = ArrayList<Comment>()
         val userDataCache = mutableMapOf<String, Pair<String, String?>>()
         
-        Log.d(TAG, "Loading user data for ${commentEntities.size} comments")
-        
         if (commentEntities.isEmpty()) {
-            Log.d(TAG, "No comments to load user data for")
             return emptyList()
         }
         
@@ -144,7 +135,6 @@ class CommentRepository(
                 val cached = userDataCache[entity.userId]
                 userName = cached?.first ?: ""
                 userPhotoUrl = cached?.second
-                Log.d(TAG, "Using cached user data for ${entity.userId}: name=$userName")
             } else {
                 // Get from repository
                 try {
@@ -153,9 +143,7 @@ class CommentRepository(
                         userName = user.name
                         userPhotoUrl = user.profilePhotoUrl
                         userDataCache[entity.userId] = Pair(userName, userPhotoUrl)
-                        Log.d(TAG, "Got user data for ${entity.userId}: name=$userName")
                     } else {
-                        Log.d(TAG, "No user data found for ${entity.userId}, using default")
                         userName = "User"
                         userDataCache[entity.userId] = Pair(userName, null)
                     }
@@ -168,10 +156,8 @@ class CommentRepository(
             
             val comment = entity.toComment(userName, userPhotoUrl)
             result.add(comment)
-            Log.d(TAG, "Added comment to result: id=${comment.id}, text='${comment.text.take(20)}...', user=$userName")
         }
         
-        Log.d(TAG, "Returning ${result.size} comments with user data")
         return result
     }
     
@@ -198,8 +184,6 @@ class CommentRepository(
             // Update comment count in post document
             val newCount = updateCommentCount(comment.postId)
             
-            Log.d(TAG, "Comment added successfully: ${comment.id}")
-            Log.d(TAG, "Local database now has ${localComments.size} comments for post ${comment.postId}")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error adding comment: ${e.message}")
@@ -222,7 +206,6 @@ class CommentRepository(
             val entity = CommentEntity.fromComment(comment)
             commentDao.updateComment(entity)
             
-            Log.d(TAG, "Comment updated successfully: ${comment.id}")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error updating comment: ${e.message}")
@@ -235,8 +218,6 @@ class CommentRepository(
      */
     suspend fun deleteComment(commentId: String, postId: String): Boolean {
         return try {
-            Log.d(TAG, "Starting to delete comment $commentId for post $postId")
-            
             // First get the current count before deleting anything
             val currentCount = try {
                 val snapshot = firestore.collection("Comments")
@@ -248,8 +229,6 @@ class CommentRepository(
                 Log.e(TAG, "Error getting current comment count: ${e.message}")
                 -1 // Error value
             }
-            
-            Log.d(TAG, "Current comment count before deletion: $currentCount")
             
             // Delete from Firestore
             firestore.collection("Comments")
@@ -272,25 +251,47 @@ class CommentRepository(
                 if (currentCount > 0) currentCount - 1 else 0 // Fallback to estimate
             }
             
-            Log.d(TAG, "New comment count after deletion: $newCount")
-            
             // Update the post document with accurate count
             try {
                 firestore.collection("Posts")
                     .document(postId)
                     .set(mapOf("commentCount" to newCount), SetOptions.merge())
                     .await()
-                Log.d(TAG, "Successfully updated comment count in Posts collection: $newCount")
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating comment count in Posts collection: ${e.message}")
                 // Continue execution even if this part fails
             }
             
-            Log.d(TAG, "Comment deleted successfully: $commentId")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting comment: ${e.message}", e)
             false
+        }
+    }
+    
+    /**
+     * Count comments for a post in Firestore
+     */
+    private suspend fun countCommentsForPost(postId: String): Int {
+        try {
+            // Count comments in Firestore
+            val snapshot = firestore.collection("Comments")
+                .whereEqualTo("postId", postId)
+                .get()
+                .await()
+            
+            val count = snapshot.size()
+            
+            // Update post document with accurate count
+            firestore.collection("Posts")
+                .document(postId)
+                .set(mapOf("commentCount" to count), SetOptions.merge())
+                .await()
+            
+            return count
+        } catch (e: Exception) {
+            Log.e(TAG, "Error counting comments: ${e.message}")
+            return -1
         }
     }
     
@@ -307,16 +308,12 @@ class CommentRepository(
             
             val count = snapshot.size()
             
-            // Log for debugging
-            Log.d(TAG, "Counted $count comments for post $postId in Firestore")
-            
             // Update post document with accurate count
             firestore.collection("Posts")
                 .document(postId)
                 .set(mapOf("commentCount" to count), SetOptions.merge())
                 .await()
             
-            Log.d(TAG, "Successfully updated comment count in Firestore for post $postId: $count")
             return count
         } catch (e: Exception) {
             Log.e(TAG, "Error updating comment count: ${e.message}")
@@ -329,7 +326,6 @@ class CommentRepository(
      */
     fun removeListeners() {
         for ((postId, listener) in firestoreListeners) {
-            Log.d(TAG, "Removing listener for post $postId")
             listener.remove()
         }
         firestoreListeners.clear()
@@ -340,8 +336,6 @@ class CommentRepository(
      */
     suspend fun refreshComments(postId: String) {
         try {
-            Log.d(TAG, "Forcing refresh of comments for post $postId")
-            
             // Get comments from Firestore
             val commentDocs = firestore.collection("Comments")
                 .whereEqualTo("postId", postId)
@@ -366,8 +360,6 @@ class CommentRepository(
                 }
             }
             
-            Log.d(TAG, "Retrieved ${comments.size} comments from Firestore during refresh")
-            
             // Save to Room database
             val entities = comments.map { CommentEntity.fromComment(it) }
             if (entities.isNotEmpty()) {
@@ -375,9 +367,8 @@ class CommentRepository(
                 commentDao.deleteCommentsForPost(postId)
                 // Then insert the new ones
                 commentDao.insertComments(entities)
-                Log.d(TAG, "Updated Room with ${entities.size} fresh comments")
             } else {
-                Log.d(TAG, "No comments to refresh for post $postId")
+                // No comments to refresh
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error refreshing comments: ${e.message}")
@@ -392,7 +383,6 @@ class CommentRepository(
         try {
             // Clear from Room cache
             commentDao.deleteCommentsForPost(postId)
-            Log.d(TAG, "Cleared cached comments for post $postId")
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing cached comments: ${e.message}")
         }
@@ -405,7 +395,6 @@ class CommentRepository(
         try {
             // Clear from Room cache
             commentDao.deleteAllComments()
-            Log.d(TAG, "Cleared all cached comments")
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing all cached comments: ${e.message}")
         }
@@ -416,9 +405,7 @@ class CommentRepository(
      */
     suspend fun getLocalCommentsForPost(postId: String): List<Comment> {
         return try {
-            Log.d(TAG, "Getting local comments for post $postId")
             val commentEntities = commentDao.getCommentsForPost(postId)
-            Log.d(TAG, "Found ${commentEntities.size} local comments")
             
             // Convert entities to domain models with user data
             loadUserDataForComments(commentEntities)

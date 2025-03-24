@@ -295,6 +295,26 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 val postSnapshot = db.collection("Posts").document(postId).get().await()
                 val photoUrl = postSnapshot.getString("photoUrl")
                 
+                // Delete all comments associated with this post from Firestore
+                try {
+                    val commentsQuery = db.collection("Comments").whereEqualTo("postId", postId).get().await()
+                    val batch = db.batch()
+                    
+                    // Add all comment deletions to the batch
+                    for (commentDoc in commentsQuery.documents) {
+                        batch.delete(db.collection("Comments").document(commentDoc.id))
+                    }
+                    
+                    // Execute the batch
+                    if (commentsQuery.documents.isNotEmpty()) {
+                        batch.commit().await()
+                        Log.d("ProfileViewModel", "Deleted ${commentsQuery.documents.size} comments for post $postId")
+                    }
+                } catch (e: Exception) {
+                    Log.e("ProfileViewModel", "Error deleting comments for post: ${e.message}")
+                    // Continue with post deletion even if comment deletion fails
+                }
+                
                 // Delete from Firestore first
                 db.collection("Posts").document(postId).delete().await()
                 
@@ -321,6 +341,16 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 
                 // Then delete from local Room database to keep them in sync
                 feedRepository.deleteFeedItem(postId)
+                
+                // Delete associated comments from local Room database
+                try {
+                    val appDb = (getApplication() as? com.eaor.coffeefee.CoffeefeeApplication)?.database
+                    appDb?.commentDao()?.deleteCommentsForPost(postId)
+                    Log.d("ProfileViewModel", "Deleted comments for post $postId from local database")
+                } catch (e: Exception) {
+                    Log.e("ProfileViewModel", "Error deleting comments from local database: ${e.message}")
+                    // Continue even if local comment deletion fails
+                }
                 
                 // Get current posts and filter out the deleted one
                 val currentPosts = _userPosts.value?.toMutableList() ?: mutableListOf()
