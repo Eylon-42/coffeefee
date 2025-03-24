@@ -1,7 +1,7 @@
 package com.eaor.coffeefee.repositories
 
 import android.util.Log
-import com.eaor.coffeefee.data.User
+import com.eaor.coffeefee.data.UserEntity
 import com.eaor.coffeefee.data.UserDao
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -10,6 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.auth.FirebaseAuth
+import com.eaor.coffeefee.models.User
+import com.eaor.coffeefee.models.toMap
+import com.eaor.coffeefee.models.toUser
 
 /**
  * UserRepository follows the Repository pattern from MVVM architecture.
@@ -26,9 +29,9 @@ class UserRepository(
      * @param userId The user ID to get data for
      * @param forceRefresh If true, bypass cache and fetch directly from Firestore
      * @param maxAgeMinutes Maximum age of cached data in minutes before refreshing (default: 60)
-     * @return User object or null if not found
+     * @return UserEntity object or null if not found
      */
-    suspend fun getUserData(userId: String, forceRefresh: Boolean = false, maxAgeMinutes: Int = 60): User? = withContext(Dispatchers.IO) {
+    suspend fun getUserData(userId: String, forceRefresh: Boolean = false, maxAgeMinutes: Int = 60): UserEntity? = withContext(Dispatchers.IO) {
         if (userId.isEmpty()) return@withContext null
         
         try {
@@ -40,8 +43,7 @@ class UserRepository(
                                 !cachedUser.name.isNullOrEmpty() &&
                                 !forceRefresh &&
                                 // Check if the cached data is fresh enough
-                                (cachedUser.lastUpdatedTimestamp > 0 && 
-                                (currentTimeMillis - cachedUser.lastUpdatedTimestamp) < maxAgeMinutes * 60 * 1000)
+                                (currentTimeMillis - cachedUser.lastUpdatedTimestamp) < maxAgeMinutes * 60 * 1000
             
             if (shouldUseCache) {
                 Log.d("UserRepository", "Using cached user data for $userId (age: ${(currentTimeMillis - cachedUser!!.lastUpdatedTimestamp) / (60 * 1000)} min)")
@@ -55,11 +57,6 @@ class UserRepository(
                 Log.d("UserRepository", "Cached user data for $userId has empty name, fetching from Firestore")
             } else if (forceRefresh) {
                 Log.d("UserRepository", "Force refresh requested for user $userId, fetching from Firestore")
-            } else if (cachedUser.lastUpdatedTimestamp <= 0) {
-                Log.d("UserRepository", "Cached user data for $userId has no timestamp, fetching from Firestore")
-            } else {
-                val ageMinutes = (currentTimeMillis - cachedUser.lastUpdatedTimestamp) / (60 * 1000)
-                Log.d("UserRepository", "Cached user data for $userId is too old (${ageMinutes}min > ${maxAgeMinutes}min), fetching from Firestore")
             }
             
             // If not in cache or force refresh, fetch from Firestore
@@ -87,7 +84,7 @@ class UserRepository(
                     ?: ""
                 
                 // Create user object with current timestamp
-                val user = User(
+                val user = UserEntity(
                     uid = userId,
                     name = name,
                     email = email,
@@ -102,13 +99,10 @@ class UserRepository(
                                  cachedUser.profilePhotoUrl != profileUrl
                 
                 // Only invalidate Picasso cache if profile URL changed
-                if (hasChanged && cachedUser != null && 
-                    cachedUser.profilePhotoUrl != null && 
-                    profileUrl != cachedUser.profilePhotoUrl &&
-                    profileUrl.isNotEmpty()) {
+                if ((hasChanged || forceRefresh) && profileUrl.isNotEmpty()) {
                     try {
-                        // Only invalidate if the URL actually changed, not just for refresh
-                        Log.d("UserRepository", "Profile photo URL changed for user $userId, invalidating Picasso cache")
+                        // Invalidate regardless of cache state when forceRefresh is true
+                        Log.d("UserRepository", "Profile photo URL for user $userId, invalidating Picasso cache")
                         com.squareup.picasso.Picasso.get().invalidate(profileUrl)
                     } catch (e: Exception) {
                         Log.e("UserRepository", "Error invalidating Picasso cache: ${e.message}")
@@ -155,7 +149,7 @@ class UserRepository(
         }
     }
 
-    suspend fun updateUser(user: User): Boolean {
+    suspend fun updateUser(user: UserEntity): Boolean {
         return try {
             // Update Firestore first
             val userData = hashMapOf(
@@ -198,7 +192,7 @@ class UserRepository(
     fun observeUserById(userId: String) = userDao.observeUserById(userId)
     
     // Get user from local cache without hitting Firestore
-    suspend fun getUserFromLocalCache(userId: String): User? {
+    suspend fun getUserFromLocalCache(userId: String): UserEntity? {
         return try {
             val user = userDao.getUserById(userId)
             if (user != null) {
@@ -214,7 +208,7 @@ class UserRepository(
     // Cache user locally without hitting Firestore
     suspend fun cacheUserLocally(userId: String, name: String, email: String?, profilePhotoUrl: String?) {
         try {
-            val user = User(
+            val user = UserEntity(
                 uid = userId,
                 name = name,
                 email = email ?: "",
@@ -227,7 +221,7 @@ class UserRepository(
         }
     }
 
-    suspend fun getUsersByIds(userIds: List<String>): List<User> {
+    suspend fun getUsersByIds(userIds: List<String>): List<UserEntity> {
         return try {
             userDao.getUsersByIds(userIds)
         } catch (e: Exception) {
@@ -275,7 +269,7 @@ class UserRepository(
                                 existingUser.email != email || 
                                 existingUser.profilePhotoUrl != profileUrl) {
                                 
-                                val user = User(
+                                val user = UserEntity(
                                     uid = userId,
                                     name = name,
                                     email = email,
@@ -326,10 +320,10 @@ class UserRepository(
      * Get a map of users by their IDs, with improved handling of force refresh
      * @param userIds List of user IDs to fetch
      * @param forceRefresh Whether to force refresh from Firestore
-     * @return Map of userId to User objects
+     * @return Map of userId to UserEntity objects
      */
-    suspend fun getUsersMapByIds(userIds: List<String>, forceRefresh: Boolean = false): Map<String, User> = withContext(Dispatchers.IO) {
-        if (userIds.isEmpty()) return@withContext emptyMap<String, User>()
+    suspend fun getUsersMapByIds(userIds: List<String>, forceRefresh: Boolean = false): Map<String, UserEntity> = withContext(Dispatchers.IO) {
+        if (userIds.isEmpty()) return@withContext emptyMap<String, UserEntity>()
         
         Log.d("UserRepository", "Getting user data for ${userIds.size} users, forceRefresh=$forceRefresh")
         
@@ -392,7 +386,7 @@ class UserRepository(
                                 
                                 val email = document.getString("email") ?: ""
                                 
-                                val user = User(
+                                val user = UserEntity(
                                     uid = userId,
                                     name = name,
                                     email = email,
@@ -439,7 +433,7 @@ class UserRepository(
                                     
                                     val email = document.getString("email") ?: ""
                                     
-                                    val user = User(
+                                    val user = UserEntity(
                                         uid = userId,
                                         name = name,
                                         email = email,
@@ -474,7 +468,7 @@ class UserRepository(
                             val isCurrentUserMissing = batch.contains(currentUser.uid) && !fetchedUserIds.contains(currentUser.uid)
                             
                             if (isCurrentUserMissing && !currentUser.displayName.isNullOrEmpty()) {
-                                val user = User(
+                                val user = UserEntity(
                                     uid = currentUser.uid,
                                     name = currentUser.displayName ?: "User",
                                     email = currentUser.email ?: "",
@@ -508,13 +502,13 @@ class UserRepository(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("UserRepository", "Error getting users map: ${e.message}")
-            return@withContext emptyMap<String, User>()
+            return@withContext emptyMap<String, UserEntity>()
         }
     }
 
     /**
      * Update specific fields of a user.
-     * This is useful when you only want to update certain fields and not have a complete User object.
+     * This is useful when you only want to update certain fields and not have a complete UserEntity object.
      */
     suspend fun updateUserData(userId: String, name: String, email: String? = null, profilePhotoUrl: String? = null): Boolean {
         return try {
@@ -544,14 +538,14 @@ class UserRepository(
             // Update Room database
             // If we had an existing user, update its fields, otherwise create a new one
             val updatedUser = if (existingUser != null) {
-                User(
+                UserEntity(
                     uid = userId,
                     name = name,
                     email = email ?: existingUser.email,
                     profilePhotoUrl = profilePhotoUrl ?: existingUser.profilePhotoUrl
                 )
             } else {
-                User(
+                UserEntity(
                     uid = userId,
                     name = name,
                     email = email ?: "",
@@ -577,6 +571,65 @@ class UserRepository(
         } catch (e: Exception) {
             Log.e("UserRepository", "Error updating user fields: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Get complete user data from Firestore including preferences and tags
+     * This uses the User model from the models package that matches the full Firestore schema
+     */
+    suspend fun getCompleteUserData(userId: String): com.eaor.coffeefee.models.User? = withContext(Dispatchers.IO) {
+        try {
+            if (userId.isEmpty()) return@withContext null
+            
+            // Get user document from Firestore
+            val userDoc = firestore.collection("Users").document(userId).get().await()
+            
+            if (userDoc.exists()) {
+                // Convert document data to User model
+                val userData = userDoc.data ?: return@withContext null
+                val user = userData.toUser(userId)
+                
+                Log.d("UserRepository", "Got complete user data for $userId: name=${user.name}, tags=${user.tags.size}")
+                return@withContext user
+            } else {
+                Log.d("UserRepository", "User document for $userId not found")
+                return@withContext null
+            }
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Error getting complete user data: ${e.message}")
+            return@withContext null
+        }
+    }
+
+    /**
+     * Update complete user data including preferences and tags
+     */
+    suspend fun updateCompleteUser(user: User): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Convert User to Map for Firestore
+            val userData = user.toMap()
+            
+            // Update in Firestore
+            firestore.collection("Users")
+                .document(user.uid)
+                .set(userData, com.google.firebase.firestore.SetOptions.merge())
+                .await()
+            
+            // Also update the basic user in Room for caching
+            val basicUser = UserEntity(
+                uid = user.uid,
+                name = user.name,
+                email = user.email,
+                profilePhotoUrl = user.profilePhotoUrl
+            )
+            userDao.insertUser(basicUser)
+            
+            Log.d("UserRepository", "Updated complete user data for ${user.uid}")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Error updating complete user data: ${e.message}")
+            return@withContext false
         }
     }
 }

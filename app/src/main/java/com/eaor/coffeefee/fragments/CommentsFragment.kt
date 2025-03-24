@@ -74,14 +74,59 @@ class CommentsFragment : Fragment() {
     private var postTitle: String? = null
     
     // Add method to broadcast comment changes
-    private fun broadcastCommentChange(action: String, postId: String, commentCount: Int) {
+    private fun broadcastCommentChange(action: String, postId: String, count: Int) {
+        Log.d("CommentsFragment", "Broadcasting $action for post $postId with count $count")
+        
         try {
+            // First, update the Room database directly to ensure consistency
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    // Update comment count in Room directly
+                    val commentDao = (requireActivity().application as com.eaor.coffeefee.CoffeefeeApplication).database.commentDao()
+                    commentDao.updateCommentCountForPost(postId, count)
+                    Log.d("CommentsFragment", "Updated Room database with comment count $count for post $postId")
+                    
+                    // Now proceed with broadcasting and UI updates
+                    updateUIAndBroadcast(action, postId, count)
+                    
+                    // Always set these flags to ensure profile data is treated as changed
+                    // This fixes the issue with UserProfileFragment not refreshing comment counts
+                    com.eaor.coffeefee.GlobalState.postsWereChanged = true
+                } catch (e: Exception) {
+                    Log.e("CommentsFragment", "Error updating Room database: ${e.message}")
+                    // Still try to broadcast even if Room update fails
+                    updateUIAndBroadcast(action, postId, count)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("CommentsFragment", "Error in broadcastCommentChange: ${e.message}")
+        }
+    }
+    
+    private fun updateUIAndBroadcast(action: String, postId: String, count: Int) {
+        try {
+            // Create broadcast intent
             val intent = Intent(action).apply {
                 putExtra("postId", postId)
-                putExtra("commentCount", commentCount)
+                putExtra("commentCount", count)
             }
-            requireContext().sendBroadcast(intent)
-            Log.d("CommentsFragment", "Broadcast sent: $action for post $postId with count $commentCount")
+            
+            // Send the broadcast
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                requireContext().sendBroadcast(intent, null)
+            } else {
+                requireContext().sendBroadcast(intent)
+            }
+            
+            // Also explicitly update the comment count in the MainActivity
+            if (activity is MainActivity) {
+                (activity as MainActivity).updateCommentCount(postId, count)
+            }
+            
+            // Mark that profile data has changed (for refreshing the feed)
+            com.eaor.coffeefee.GlobalState.triggerRefreshAfterCommentChange()
+            
+            Log.d("CommentsFragment", "Successfully broadcast comment change and updated UI")
         } catch (e: Exception) {
             Log.e("CommentsFragment", "Error broadcasting comment change: ${e.message}")
         }

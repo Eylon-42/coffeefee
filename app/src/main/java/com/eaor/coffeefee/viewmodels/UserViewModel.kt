@@ -8,7 +8,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.eaor.coffeefee.data.User
+import com.eaor.coffeefee.data.UserEntity
 import com.eaor.coffeefee.repositories.FeedRepository
 import com.eaor.coffeefee.repositories.UserRepository
 import com.google.firebase.auth.FirebaseAuth
@@ -27,8 +27,8 @@ class UserViewModel : ViewModel() {
     val isLoading: LiveData<Boolean> = _isLoading
     
     // Change this to public, but give it a different name for external use
-    private val _userData = MutableLiveData<User?>()
-    val userData: LiveData<User?> = _userData
+    private val _userData = MutableLiveData<UserEntity?>()
+    val userData: LiveData<UserEntity?> = _userData
     
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
@@ -102,7 +102,7 @@ class UserViewModel : ViewModel() {
                 val currentEmail = currentUser?.email ?: auth.currentUser?.email ?: email
                 
                 // Create the updated user object
-                val updatedUser = User(
+                val updatedUser = UserEntity(
                     uid = userId,
                     name = name,
                     email = currentEmail, // Keep the current email unchanged
@@ -219,7 +219,7 @@ class UserViewModel : ViewModel() {
     }
     
     // Add a setter method to update the user data from outside
-    fun updateUserDataValue(user: User?) {
+    fun updateUserDataValue(user: UserEntity?) {
         _userData.value = user
     }
     
@@ -278,7 +278,7 @@ class UserViewModel : ViewModel() {
                 user.updateProfile(profileUpdates).await()
                 
                 // Update user document with the updatedUser object
-                val updatedUser = User(
+                val updatedUser = UserEntity(
                     uid = userId,
                     name = name,
                     email = email,
@@ -319,7 +319,6 @@ class UserViewModel : ViewModel() {
         Log.d("UserViewModel", "Profile updated for user: $userId")
         
         // Set a flag to indicate profile was updated
-        GlobalState.shouldRefreshProfile = true
-        GlobalState.shouldRefreshFeed = true
+        GlobalState.triggerRefreshAfterProfileChange(dataChanged = true)
     }
 } 

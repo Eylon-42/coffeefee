@@ -9,7 +9,7 @@ import androidx.room.ColumnInfo
  * Contains essential user information that needs to be cached locally.
  */
 @Entity(tableName = "users")
-data class User(
+data class UserEntity(
     @PrimaryKey
     @ColumnInfo(name = "uid")
     val uid: String,

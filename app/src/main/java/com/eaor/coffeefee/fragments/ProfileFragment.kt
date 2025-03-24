@@ -24,7 +24,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.data.AppDatabase
-import com.eaor.coffeefee.data.User
+import com.eaor.coffeefee.data.UserEntity
 import com.eaor.coffeefee.repositories.UserRepository
 import com.eaor.coffeefee.repositories.FeedRepository
 import com.eaor.coffeefee.viewmodels.UserViewModel
@@ -53,6 +53,7 @@ import android.content.SharedPreferences
 import com.google.android.material.button.MaterialButton
 import com.squareup.picasso.Callback
 import java.net.URLDecoder
+import com.eaor.coffeefee.fragments.UserProfileFragment
 
 class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var bottomNav: View
@@ -70,6 +71,9 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
     private lateinit var viewModel: UserViewModel
     private lateinit var sharedPreferences: SharedPreferences
     private var isRemovingPhoto = false
+    private lateinit var userDataLoadingIndicator: ProgressBar
+    private var initialDataLoaded = false
+    private var profileWasEdited = false
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -140,6 +144,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         progressBar = view.findViewById(R.id.progressBar)
         changePhotoText = view.findViewById(R.id.changePhotoText)
         removePhotoButton = view.findViewById(R.id.removePhotoButton)
+        userDataLoadingIndicator = view.findViewById(R.id.userDataLoadingIndicator)
 
         // Initially hide progress bar
         progressBar.visibility = GONE
@@ -177,7 +182,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             editUserEmail.setText(userEmail)
             
             // Store the photo URL in the ViewModel so loadProfilePicture can access it
-            viewModel.updateUserDataValue(User(
+            viewModel.updateUserDataValue(UserEntity(
                 uid = auth.currentUser?.uid ?: "",
                 name = userName,
                 email = userEmail,
@@ -218,10 +223,10 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         // Observe user data using LiveData following MVVM pattern
         // The UI reactively updates when the ViewModel's LiveData changes
         viewModel.userData.observe(viewLifecycleOwner) { user ->
-            user?.let {
-                Log.d("ProfileFragment", "Received user data update from LiveData: ${it.name}")
-                editUserName.setText(it.name)
-                editUserEmail.setText(it.email)
+            if (user != null) {
+                Log.d("ProfileFragment", "Received user data update from LiveData: ${user.name}")
+                editUserName.setText(user.name)
+                editUserEmail.setText(user.email)
                 
                 // Keep the photo URL field hidden
                 view?.findViewById<EditText>(R.id.editUserPhotoUrl)?.visibility = GONE
@@ -233,15 +238,25 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
 
                 // Load and display the user's profile picture
                 loadProfilePicture()
+                
+                // Hide loading indicator
+                showLoading(false)
+                
+                // Mark that we've loaded data
+                initialDataLoaded = true
+            } else {
+                // No data available
+                showLoading(false)
+                Toast.makeText(context, "Could not load user data", Toast.LENGTH_SHORT).show()
             }
         }
         
         // Observe loading state
         viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
-            progressBar.visibility = if (isLoading) VISIBLE else GONE
-            saveButton.isEnabled = !isLoading
-            
-            Log.d("ProfileFragment", "Loading state changed: $isLoading")
+            // Only show loading state for initial data load
+            if (!initialDataLoaded) {
+                showLoading(isLoading)
+            }
         }
         
         // Observe error messages
@@ -409,10 +424,19 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
             }
             storageRef.downloadUrl
         }.addOnSuccessListener { downloadUri ->
+            // Mark that profile was edited to trigger refresh in other fragments
+            GlobalState.profileWasEdited = true
+            
+            // Update global state to trigger refreshes
+            GlobalState.triggerRefreshAfterProfileChange(dataChanged = true)
+            
             // Now update the user data with the new photo URL
             viewModel.updateUserData(name, email, downloadUri.toString())
             saveButton.isEnabled = true
             progressBar.visibility = View.GONE
+            
+            // Show success message
+            Toast.makeText(context, "Profile image updated successfully", Toast.LENGTH_SHORT).show()
         }.addOnFailureListener { e ->
             // Handle failure
             progressBar.visibility = View.GONE
@@ -435,32 +459,48 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         // Check if we should refresh the profile
         val shouldRefresh = GlobalState.shouldRefreshProfile ||
                            sharedPreferences.getBoolean("should_refresh_profile", false)
+        val profileDataChanged = GlobalState.profileDataChanged
         
-        if (shouldRefresh) {
-            // Reset the flags
-            GlobalState.shouldRefreshProfile = false
-            sharedPreferences.edit().putBoolean("should_refresh_profile", false).apply()
-            
-            Log.d("ProfileFragment", "Refreshing profile data due to global flag")
-            
-            // Only reload user data, the user profile should update automatically
-            val currentUser = auth.currentUser
-            if (currentUser != null) {
-                // Force refresh - but make sure we only pass parameters the method accepts
+        Log.d("ProfileFragment", "onResume: shouldRefresh=$shouldRefresh, profileDataChanged=$profileDataChanged, initialDataLoaded=$initialDataLoaded")
+        
+        // Get the current user
+        val currentUser = auth.currentUser
+        
+        if (currentUser != null) {
+            if (!initialDataLoaded) {
+                // First time loading - always show loading indicator
+                Log.d("ProfileFragment", "First time loading profile data")
+                showLoading(true)
                 viewModel.getUserData(currentUser.uid)
+            } else if (shouldRefresh) {
+                // Reset the flags
+                GlobalState.shouldRefreshProfile = false
+                sharedPreferences.edit().putBoolean("should_refresh_profile", false).apply()
                 
-                // Invalidate profile photo cache if we have a URL
-                val photoUrl = currentUser.photoUrl?.toString()
-                if (photoUrl != null && photoUrl.isNotEmpty()) {
-                    try {
-                        Picasso.get().invalidate(photoUrl)
-                        Log.d("ProfileFragment", "Invalidated cache for photo URL: $photoUrl")
-                    } catch (e: Exception) {
-                        Log.e("ProfileFragment", "Error invalidating Picasso cache: ${e.message}")
+                // Only reload user data if actual changes happened
+                if (profileDataChanged) {
+                    Log.d("ProfileFragment", "Refreshing profile data due to actual data changes")
+                    GlobalState.profileDataChanged = false
+                    
+                    // Don't show loading indicator for refreshes
+                    viewModel.getUserData(currentUser.uid)
+                    
+                    // Invalidate profile photo cache if we have a URL
+                    val photoUrl = currentUser.photoUrl?.toString()
+                    if (photoUrl != null && photoUrl.isNotEmpty()) {
+                        try {
+                            Picasso.get().invalidate(photoUrl)
+                            Log.d("ProfileFragment", "Invalidated cache for photo URL: $photoUrl")
+                        } catch (e: Exception) {
+                            Log.e("ProfileFragment", "Error invalidating Picasso cache: ${e.message}")
+                        }
                     }
+                } else {
+                    Log.d("ProfileFragment", "Skipping refresh since no actual data changed")
                 }
             }
         }
+        // Don't set feed refresh flag here as we're just viewing the profile
     }
 
     private fun loadProfilePicture() {
@@ -498,6 +538,47 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                         e?.let { Log.e("ProfileFragment", "Error loading profile image", it) }
                     }
                 })
+        }
+    }
+
+    private fun updateProfile() {
+        if (isAdded) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val currentUser = auth.currentUser
+                    if (currentUser != null) {
+                        val userName = editUserName.text.toString().trim()
+                        val bio = editUserEmail.text.toString().trim()
+                        
+                        // Mark that profile was edited
+                        GlobalState.profileWasEdited = true
+                        
+                        // Update global state to trigger refreshes with explicit dataChanged=true
+                        GlobalState.triggerRefreshAfterProfileChange(dataChanged = true)
+                        
+                        // Update user profile in Firestore and local database
+                        viewModel.updateUserData(userName, bio, null)
+                        
+                        // Show success message
+                        Toast.makeText(context, "Profile updated successfully", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e("ProfileFragment", "Error updating profile: ${e.message}")
+                    Toast.makeText(context, "Error updating profile: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun showLoading(isLoading: Boolean) {
+        if (isLoading) {
+            userDataLoadingIndicator.visibility = View.VISIBLE
+            editUserName.visibility = View.INVISIBLE
+            editUserEmail.visibility = View.INVISIBLE
+        } else {
+            userDataLoadingIndicator.visibility = View.GONE
+            editUserName.visibility = View.VISIBLE
+            editUserEmail.visibility = View.VISIBLE
         }
     }
 }

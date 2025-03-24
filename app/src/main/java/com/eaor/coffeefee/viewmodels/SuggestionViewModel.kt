@@ -65,6 +65,7 @@ class SuggestionViewModel : BaseViewModel() {
                 if (tags.isEmpty()) {
                     Log.w(TAG, "User has no preference tags")
                     setError("Please update your preferences to get personalized recommendations")
+                    setLoading(false)
                 } else {
                     Log.d(TAG, "Loaded ${tags.size} user tags")
                     // Generate suggestions based on the new tags
@@ -74,7 +75,6 @@ class SuggestionViewModel : BaseViewModel() {
                 Log.e(TAG, "Error loading user tags: ${e.message}", e)
                 setError("Error loading user preferences: ${e.message}")
                 _userTags.value = emptyList()
-            } finally {
                 setLoading(false)
             }
         }
@@ -87,11 +87,13 @@ class SuggestionViewModel : BaseViewModel() {
         val tags = _userTags.value
         if (tags.isNullOrEmpty()) {
             setError("No user preferences available")
+            setLoading(false)
             return
         }
         
         if (!::repository.isInitialized) {
             setError("Repository not initialized")
+            setLoading(false)
             return
         }
         
@@ -106,6 +108,7 @@ class SuggestionViewModel : BaseViewModel() {
                     Log.e(TAG, "No coffee shops available for generating suggestions")
                     setError("No coffee shops available")
                     _suggestedCoffeeShops.value = emptyList()
+                    setLoading(false)
                     return@launch
                 }
                 
@@ -121,6 +124,7 @@ class SuggestionViewModel : BaseViewModel() {
                         } else {
                             clearError()
                         }
+                        setLoading(false)
                     },
                     onFailure = { error ->
                         Log.e(TAG, "Error generating suggestions: ${error.message}", error)
@@ -128,13 +132,13 @@ class SuggestionViewModel : BaseViewModel() {
                         
                         // Fall back to simple tag matching
                         _suggestedCoffeeShops.value = generateFallbackSuggestions(tags, coffeeShops)
+                        setLoading(false)
                     }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Exception in suggestion generation: ${e.message}", e)
                 setError("Error generating suggestions: ${e.message}")
                 _suggestedCoffeeShops.value = emptyList()
-            } finally {
                 setLoading(false)
             }
         }

@@ -7,6 +7,7 @@ import com.eaor.coffeefee.utils.CircleTransform
 import com.squareup.picasso.NetworkPolicy
 import com.squareup.picasso.Picasso
 import com.squareup.picasso.Transformation
+import com.squareup.picasso.MemoryPolicy
 
 /**
  * Utility class for loading images across the app with consistent caching behavior
@@ -28,63 +29,77 @@ object ImageLoader {
      * @param imageUrl The URL of the image to load
      * @param placeholder Resource ID for the placeholder
      * @param circular Whether to make the image circular
+     * @param forceRefresh Whether to force a network request
      */
     fun loadProfileImage(
         imageView: ImageView, 
         imageUrl: String?, 
         placeholder: Int = R.drawable.default_avatar,
-        circular: Boolean = true
+        circular: Boolean = true,
+        forceRefresh: Boolean = false
     ) {
         try {
-            if (!imageUrl.isNullOrEmpty()) {
-                // Check if we're already loading/showing this URL to avoid flickering
-                val currentTag = imageView.tag?.toString()
-                if (currentTag != imageUrl) {
-                    Log.d("ImageLoader", "Loading profile image: $imageUrl (previous: $currentTag)")
-                    
-                    // Tag the imageView with the URL being loaded
-                    imageView.tag = imageUrl
-                    
-                    // Create a request that uses both memory and disk cache 
-                    // without forcing offline-only
-                    val requestCreator = Picasso.get()
-                        .load(imageUrl)
-                        .placeholder(placeholder)
-                        .error(placeholder)
-                        .resize(MAX_PROFILE_WIDTH, MAX_PROFILE_HEIGHT)
-                        .centerCrop()
-                    
-                    // Apply circle transform if needed
-                    val finalRequest = if (circular) {
-                        requestCreator.transform(CircleTransform())
-                    } else {
-                        requestCreator
-                    }
-                    
-                    // Load with normal caching behavior
-                    finalRequest.into(imageView, object : com.squareup.picasso.Callback {
-                        override fun onSuccess() {
-                            Log.d("ImageLoader", "Successfully loaded profile image: $imageUrl")
-                        }
-                        
-                        override fun onError(e: Exception?) {
-                            Log.e("ImageLoader", "Error loading profile image: $imageUrl - ${e?.message}")
-                            imageView.setImageResource(placeholder)
-                        }
-                    })
-                } else {
-                    Log.d("ImageLoader", "Skipping reload, image already loaded: $imageUrl")
-                }
-            } else {
-                // No URL, use placeholder and clear tag
-                Log.d("ImageLoader", "No image URL provided, using placeholder")
+            if (imageUrl.isNullOrEmpty()) {
                 imageView.setImageResource(placeholder)
-                imageView.tag = null
+                return
             }
+            
+            val requestCreator = if (forceRefresh) {
+                // Only force network request if explicitly asked
+                Picasso.get()
+                    .load(imageUrl)
+                    .memoryPolicy(MemoryPolicy.NO_CACHE)
+                    .networkPolicy(NetworkPolicy.NO_CACHE)
+            } else {
+                // Use cached version by default for profile images
+                Picasso.get()
+                    .load(imageUrl)
+                    .networkPolicy(NetworkPolicy.OFFLINE)
+            }
+            
+            // Apply common transformations and settings
+            requestCreator
+                .placeholder(placeholder)
+                .error(placeholder)
+                .resize(MAX_PROFILE_WIDTH, MAX_PROFILE_HEIGHT)
+                .centerCrop()
+            
+            // Apply circle transform if needed
+            val finalRequest = if (circular) {
+                requestCreator.transform(CircleTransform())
+            } else {
+                requestCreator
+            }
+            
+            // Load with normal caching behavior
+            finalRequest.into(imageView, object : com.squareup.picasso.Callback {
+                override fun onSuccess() {
+                    Log.d("ImageLoader", "Successfully loaded profile image: $imageUrl (cached)")
+                }
+                
+                override fun onError(e: Exception?) {
+                    // If offline loading failed, try from network as fallback
+                    if (!forceRefresh) {
+                        Log.d("ImageLoader", "Cache miss, loading from network: $imageUrl")
+                        Picasso.get()
+                            .load(imageUrl)
+                            .placeholder(placeholder)
+                            .error(placeholder)
+                            .resize(MAX_PROFILE_WIDTH, MAX_PROFILE_HEIGHT)
+                            .centerCrop()
+                            .apply {
+                                if (circular) transform(CircleTransform())
+                            }
+                            .into(imageView)
+                    } else {
+                        Log.e("ImageLoader", "Error loading profile image: $imageUrl - ${e?.message}")
+                        imageView.setImageResource(placeholder)
+                    }
+                }
+            })
         } catch (e: Exception) {
             Log.e("ImageLoader", "Error loading profile image: ${e.message}")
             imageView.setImageResource(placeholder)
-            imageView.tag = null
         }
     }
     

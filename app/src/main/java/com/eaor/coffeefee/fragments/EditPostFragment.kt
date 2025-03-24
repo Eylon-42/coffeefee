@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.lifecycleScope
 import com.eaor.coffeefee.BuildConfig
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
@@ -38,9 +39,19 @@ import com.squareup.picasso.Picasso
 import java.util.Arrays
 import java.util.UUID
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.os.Build
+import androidx.lifecycle.ViewModelProvider
+import com.eaor.coffeefee.GlobalState
+import com.eaor.coffeefee.models.FeedItem
+import com.eaor.coffeefee.viewmodels.FeedViewModel
 
 class EditPostFragment : Fragment() {
     private lateinit var db: FirebaseFirestore
+    private lateinit var auth: FirebaseAuth
+    private lateinit var userRepository: com.eaor.coffeefee.repositories.UserRepository
     private var imageUri: Uri? = null
     private var selectedLocation: LatLng? = null
     private var currentImageUrl: String? = null
@@ -48,12 +59,16 @@ class EditPostFragment : Fragment() {
     private var selectedPlaceId: String? = null
     private var selectedPlaceName: String? = null
     private lateinit var imageView: ImageView
-    private  var selectedPlaceRating: Float? = null
+    private var selectedPlaceRating: Float? = null
     private var selectedPlaceAddress: String? = null
     private var selectedPlacePhotoUrl: String? = null
     private var selectedPlaceDescription: String? = null
-
-    private val REQUEST_CODE_IMAGE_PICK = 1
+    private var postToEdit: FeedItem? = null
+    
+    companion object {
+        private const val TAG = "EditPostFragment"
+        private const val REQUEST_CODE_IMAGE_PICK = 1
+    }
 
     private val startAutocomplete =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -105,6 +120,11 @@ class EditPostFragment : Fragment() {
         bottomNav?.visibility = View.GONE
 
         db = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
+        
+        // Initialize UserRepository with Room DAO and Firestore
+        val userDao = com.eaor.coffeefee.data.AppDatabase.getDatabase(requireContext()).userDao()
+        userRepository = com.eaor.coffeefee.repositories.UserRepository(userDao, db)
         
         // Initialize imageView early
         imageView = view.findViewById(R.id.imageView)
@@ -150,6 +170,7 @@ class EditPostFragment : Fragment() {
         val longitude = arguments?.getDouble("longitude")
         val placeId = arguments?.getString("placeId")
         currentImageUrl = arguments?.getString("imageUrl")
+        val userId = arguments?.getString("userId") ?: auth.currentUser?.uid ?: ""
 
         if (experienceText != null) {
             // Data was passed directly, use it
@@ -164,7 +185,7 @@ class EditPostFragment : Fragment() {
 
             // Load image if URL exists
             currentImageUrl?.let { url ->
-                Log.d("EditPostFragment", "Loading image from direct arguments: $url")
+                Log.d(TAG, "Loading image from direct arguments: $url")
                 imageView.visibility = View.VISIBLE
                 view.findViewById<Button>(R.id.removeImageButton).visibility = View.VISIBLE
                 Picasso.get()
@@ -175,6 +196,28 @@ class EditPostFragment : Fragment() {
                 imageView.visibility = View.GONE
                 view.findViewById<Button>(R.id.removeImageButton).visibility = View.GONE
             }
+            
+            // Initialize postToEdit object from arguments
+            postToEdit = FeedItem(
+                id = postId,
+                userId = userId,
+                userName = "", // Not needed for edit
+                experienceDescription = experienceText,
+                location = if (locationName != null && latitude != null && longitude != null) {
+                    FeedItem.Location(
+                        name = locationName,
+                        latitude = latitude,
+                        longitude = longitude,
+                        placeId = placeId
+                    )
+                } else null,
+                photoUrl = currentImageUrl,
+                timestamp = 0, // Not needed for edit
+                userPhotoUrl = null, // Not needed for edit
+                likeCount = 0, // Not needed for edit
+                commentCount = 0, // Not needed for edit
+                likes = emptyList() // Not needed for edit
+            )
         } else {
             // No direct data, fetch from Firestore
             db.collection("Posts").document(postId).get()
@@ -200,9 +243,9 @@ class EditPostFragment : Fragment() {
 
                         // Load image
                         currentImageUrl = document.getString("photoUrl")
-                        Log.d("EditPostFragment", "Image URL from Firestore: $currentImageUrl")
+                        Log.d(TAG, "Image URL from Firestore: $currentImageUrl")
                         if (!currentImageUrl.isNullOrEmpty()) {
-                            Log.d("EditPostFragment", "Loading image from Firestore: $currentImageUrl")
+                            Log.d(TAG, "Loading image from Firestore: $currentImageUrl")
                             imageView.visibility = View.VISIBLE
                             view.findViewById<Button>(R.id.removeImageButton).visibility = View.VISIBLE
                             Picasso.get()
@@ -213,10 +256,35 @@ class EditPostFragment : Fragment() {
                             imageView.visibility = View.GONE
                             view.findViewById<Button>(R.id.removeImageButton).visibility = View.GONE
                         }
+                        
+                        // Initialize postToEdit from Firestore document
+                        val docUserId = document.getString("userId") ?: auth.currentUser?.uid ?: ""
+                        
+                        postToEdit = FeedItem(
+                            id = postId,
+                            userId = docUserId,
+                            userName = document.getString("userName") ?: "",
+                            experienceDescription = text,
+                            location = if (locationMap != null) {
+                                FeedItem.Location(
+                                    name = locationMap["name"] as? String ?: "",
+                                    latitude = (locationMap["latitude"] as? Double) ?: 0.0,
+                                    longitude = (locationMap["longitude"] as? Double) ?: 0.0,
+                                    placeId = locationMap["placeId"] as? String
+                                )
+                            } else null,
+                            photoUrl = currentImageUrl,
+                            timestamp = document.getLong("timestamp") ?: 0,
+                            userPhotoUrl = document.getString("userPhotoUrl"),
+                            likeCount = (document.getLong("likeCount") ?: 0).toInt(),
+                            commentCount = (document.getLong("commentCount") ?: 0).toInt(),
+                            likes = emptyList() // Not needed for edit
+                        )
                     }
                 }
                 .addOnFailureListener { e ->
                     Toast.makeText(context, "Error loading post: ${e.message}", Toast.LENGTH_SHORT).show()
+                    findNavController().navigateUp()
                 }
         }
     }
@@ -436,6 +504,8 @@ class EditPostFragment : Fragment() {
                     sendPostUpdatedBroadcast()
                     progressDialog.dismiss()
                     Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
+                    // Also trigger profile and feed refresh
+                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
                     navigateToUserProfile()
                 }
             }
@@ -454,6 +524,36 @@ class EditPostFragment : Fragment() {
             return
         }
         
+        // Check if the coffee shop exists first, to handle update vs. create properly
+        db.collection("CoffeeShops")
+            .document(selectedPlaceId!!)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    // Coffee shop exists, perform an update with correct data
+                    updateExistingCoffeeShop(progressDialog)
+                } else {
+                    // Coffee shop doesn't exist, create a new one
+                    createNewCoffeeShop()
+                    
+                    // Still complete the post update process
+                    sendPostUpdatedBroadcast()
+                    progressDialog.dismiss()
+                    Toast.makeText(context, "Post updated successfully", Toast.LENGTH_SHORT).show()
+                    navigateToUserProfile()
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("EditPostFragment", "Error checking coffee shop: ${e.message}")
+                // Still complete the post update process even if coffee shop check fails
+                sendPostUpdatedBroadcast()
+                progressDialog.dismiss()
+                Toast.makeText(context, "Post updated successfully, but coffee shop update failed", Toast.LENGTH_SHORT).show()
+                navigateToUserProfile()
+            }
+    }
+    
+    private fun updateExistingCoffeeShop(progressDialog: android.app.ProgressDialog) {
         val coffeeShopData = hashMapOf<String, Any>(
             "name" to (selectedPlaceName ?: "Unnamed Coffee Shop"),
             "latitude" to (selectedLocation?.latitude ?: 0.0),
@@ -468,10 +568,10 @@ class EditPostFragment : Fragment() {
         }
         
         // Handle nullable strings with default values
-        val description = if (selectedPlaceDescription != null) selectedPlaceDescription!! else "No available description"
+        val description = selectedPlaceDescription ?: "No available description"
         coffeeShopData["description"] = description
         
-        val address = if (selectedPlaceAddress != null) selectedPlaceAddress!! else "Address not available"
+        val address = selectedPlaceAddress ?: "Address not available"
         coffeeShopData["address"] = address
         
         if (selectedPlacePhotoUrl != null) {
@@ -500,91 +600,79 @@ class EditPostFragment : Fragment() {
                 // Still send the broadcast even if coffee shop update fails
                 sendPostUpdatedBroadcast()
                 progressDialog.dismiss()
+                Toast.makeText(context, "Post updated but coffee shop update failed", Toast.LENGTH_SHORT).show()
+                navigateToUserProfile()
             }
     }
     
     private fun sendPostUpdatedBroadcast() {
-        // Get the updated photo URL from Firestore to ensure we have the most recent one
-        db.collection("Posts").document(postId)
-            .get()
-            .addOnSuccessListener { document ->
-                // First check if the fragment is still attached to avoid crashes
-                if (!isAdded) {
-                    Log.d("EditPostFragment", "Fragment not attached, skipping broadcast")
-                    // Set global refresh flags even if we can't send the broadcast
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                    return@addOnSuccessListener
-                }
-                
+        if (!isAdded) return  // Check if fragment is still attached
+
+        try {
+            val currentUserId = auth.currentUser?.uid
+            
+            // Force refresh user data in cache to ensure profile and posts have latest data
+            currentUserId?.let { userId ->
                 try {
-                    val photoUrl = document.getString("photoUrl")
-                    
-                    // Broadcast that a post has been updated
-                    val intent = Intent("com.eaor.coffeefee.POST_UPDATED")
-                    intent.putExtra("postId", postId)
-                    intent.putExtra("userId", FirebaseAuth.getInstance().currentUser?.uid ?: "")
-                    
-                    // Add photo URL for image cache invalidation
-                    if (!photoUrl.isNullOrEmpty()) {
-                        intent.putExtra("photoUrl", photoUrl)
-                        
-                        // Invalidate Picasso cache for the post photo
-                        com.squareup.picasso.Picasso.get().invalidate(photoUrl)
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            Log.d(TAG, "Refreshing user data in cache after post update")
+                            // Force refresh user data from Firebase
+                            userRepository.getUserData(userId, forceRefresh = true)
+                            
+                            // Use the SharedViewModel to force refresh posts in all fragments
+                            withContext(Dispatchers.Main) {
+                                // Use shared view model to trigger refresh in all fragments that use it
+                                val feedViewModel = ViewModelProvider(requireActivity())[FeedViewModel::class.java]
+                                feedViewModel.forceRefreshUserDataInPosts()
+                                
+                                // Also send a profile updated broadcast to refresh profile UI
+                                val profileIntent = Intent("com.eaor.coffeefee.PROFILE_UPDATED")
+                                profileIntent.putExtra("userId", userId)
+                                profileIntent.putExtra("timestamp", System.currentTimeMillis())
+                                context?.sendBroadcast(profileIntent)
+                                Log.d(TAG, "Sent profile update broadcast after refreshing user data")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error refreshing user data: ${e.message}")
+                        }
                     }
-                    
-                    // Use the appropriate API based on Android version
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        // For Android 13+, specify broadcast flags
-                        requireContext().sendBroadcast(intent, null)
-                    } else {
-                        // For older Android versions
-                        requireContext().sendBroadcast(intent)
-                    }
-                    
-                    // Set global refresh flags using the helper method
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                    
-                    Log.d("EditPostFragment", "Broadcast POST_UPDATED event with postId: $postId, photoUrl: $photoUrl")
                 } catch (e: Exception) {
-                    Log.e("EditPostFragment", "Error sending broadcast: ${e.message}")
-                    // Ensure flags are set even if broadcast fails
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    Log.e(TAG, "Error launching coroutine for user refresh: ${e.message}")
                 }
             }
-            .addOnFailureListener { e ->
-                // Check if fragment is still attached
-                if (!isAdded) {
-                    Log.d("EditPostFragment", "Fragment not attached during error, skipping broadcast")
-                    // Set global refresh flags even if we can't send the broadcast
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                    return@addOnFailureListener
-                }
+            
+            // Send broadcast for post update
+            val postId = postToEdit?.id ?: arguments?.getString("postId")
+            if (postId != null) {
+                val userId = postToEdit?.userId ?: arguments?.getString("userId")
+                val photoUrlToInvalidate = postToEdit?.photoUrl ?: arguments?.getString("imageUrl")
                 
-                try {
-                    // If we can't get the photo URL, still send the broadcast
-                    val intent = Intent("com.eaor.coffeefee.POST_UPDATED")
-                    intent.putExtra("postId", postId)
-                    intent.putExtra("userId", FirebaseAuth.getInstance().currentUser?.uid ?: "")
-                    
-                    // Use the appropriate API based on Android version
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        requireContext().sendBroadcast(intent, null)
+                val intent = Intent("com.eaor.coffeefee.POST_UPDATED")
+                intent.putExtra("postId", postId)
+                if (userId != null) intent.putExtra("userId", userId)
+                if (photoUrlToInvalidate != null) intent.putExtra("photoUrl", photoUrlToInvalidate)
+                
+                // Explicitly trigger global refresh flags to ensure updates
+                com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                
+                val context = context
+                if (context != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        context.sendBroadcast(intent, null)
                     } else {
-                        requireContext().sendBroadcast(intent)
+                        context.sendBroadcast(intent)
                     }
-                    
-                    // Set global refresh flags
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
-                    
-                    Log.d("EditPostFragment", "Broadcast POST_UPDATED event with postId: $postId (without photo URL)")
-                } catch (e2: Exception) {
-                    Log.e("EditPostFragment", "Error sending broadcast: ${e2.message}")
-                    // Ensure flags are set even if broadcast fails
-                    com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                    Log.d(TAG, "Broadcast sent for updated post: $postId")
+                } else {
+                    Log.w(TAG, "Context is null, can't send broadcast")
                 }
-                
-                Log.e("EditPostFragment", "Error getting post photo URL: ${e.message}")
+            } else {
+                Log.w(TAG, "No post ID available, can't send broadcast")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending broadcast: ${e.message}", e)
+        }
     }
 
     private fun fetchPlaceDetails(placeId: String) {
@@ -628,14 +716,15 @@ class EditPostFragment : Fragment() {
                 }
                 
                 // Handle nullable strings with default values
-                val description = if (selectedPlaceDescription != null) selectedPlaceDescription!! else "No available description"
+                val description = selectedPlaceDescription ?: "No available description"
                 coffeeShopData["description"] = description
                 
-                val address = if (selectedPlaceAddress != null) selectedPlaceAddress!! else "Address not available"
+                val address = selectedPlaceAddress ?: "Address not available"
                 coffeeShopData["address"] = address
                 
                 if (photoUrl != null) {
                     coffeeShopData["photoUrl"] = photoUrl
+                    selectedPlacePhotoUrl = photoUrl // Update the local variable for future use
                 }
                 
                 // Save to Firestore

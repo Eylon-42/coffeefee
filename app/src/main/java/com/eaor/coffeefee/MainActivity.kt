@@ -12,6 +12,7 @@ import androidx.navigation.ui.NavigationUI
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.eaor.coffeefee.fragments.FeedFragment
+import com.eaor.coffeefee.fragments.CommentsFragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import androidx.fragment.app.FragmentManager
 
@@ -201,11 +202,56 @@ class MainActivity : AppCompatActivity() {
      */
     fun updateCommentCount(postId: String, count: Int) {
         Log.d(TAG, "Updating comment count for post $postId to $count")
-        // Find the fragment that manages the feed
-        val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
-        val feedFragment = navHostFragment?.childFragmentManager?.fragments?.firstOrNull { it is FeedFragment } as? FeedFragment
         
-        // Update the comment count in the feed fragment
-        feedFragment?.updateCommentCount(postId, count)
+        // Find all active fragments in the navigation host
+        val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        val fragments = navHostFragment?.childFragmentManager?.fragments ?: return
+        
+        // Update comment count in both Feed and UserProfile fragments if they're active
+        fragments.forEach { fragment ->
+            when (fragment) {
+                is FeedFragment -> {
+                    Log.d(TAG, "Updating comment count in FeedFragment")
+                    fragment.updateCommentCount(postId, count)
+                }
+                is com.eaor.coffeefee.fragments.UserProfileFragment -> {
+                    Log.d(TAG, "Updating comment count in UserProfileFragment")
+                    // Use reflection to call the method safely
+                    try {
+                        val method = fragment.javaClass.getMethod("updateCommentCount", String::class.java, Int::class.java)
+                        method.invoke(fragment, postId, count)
+                        Log.d(TAG, "Successfully updated comment count in UserProfileFragment")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating UserProfileFragment: ${e.message}")
+                    }
+                }
+                is com.eaor.coffeefee.fragments.ProfileFragment -> {
+                    // Profile fragment may also show posts
+                    Log.d(TAG, "Updating comment count in ProfileFragment")
+                    // Check if this fragment has an updateCommentCount method
+                    try {
+                        val method = fragment.javaClass.getMethod("updateCommentCount", String::class.java, Int::class.java)
+                        method.invoke(fragment, postId, count)
+                        Log.d(TAG, "Successfully updated comment count in ProfileFragment")
+                    } catch (e: Exception) {
+                        Log.d(TAG, "ProfileFragment does not have updateCommentCount method")
+                    }
+                }
+            }
+        }
+        
+        // Also update in any visible bottom sheet fragments
+        val bottomSheet = supportFragmentManager.findFragmentByTag("COMMENTS_SHEET") as? CommentsFragment
+        if (bottomSheet != null) {
+            Log.d(TAG, "Updating comment count in bottom sheet CommentsFragment")
+            // Bottom sheet might need to know the updated count
+            try {
+                val method = bottomSheet.javaClass.getMethod("updateCommentCount", String::class.java, Int::class.java)
+                method.invoke(bottomSheet, postId, count)
+            } catch (e: Exception) {
+                // It's okay if this method doesn't exist
+                Log.d(TAG, "CommentsFragment does not have updateCommentCount method")
+            }
+        }
     }
 }

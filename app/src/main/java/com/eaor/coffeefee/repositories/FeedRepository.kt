@@ -80,6 +80,79 @@ class FeedRepository(
         }
     }
 
+    /**
+     * Update like count for a post in Room database
+     */
+    suspend fun updateLikeCount(postId: String, count: Int) {
+        try {
+            feedItemDao.updateLikeCount(postId, count)
+            Log.d(TAG, "Updated like count for post $postId to $count")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating like count: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Update like count and likes list for a post in Room database
+     */
+    suspend fun updateLikes(postId: String, likes: List<String>) {
+        try {
+            val likesString = likes.joinToString(",")
+            val likeCount = likes.size
+            
+            // First get the entity to make sure it exists
+            val entity = feedItemDao.getFeedItemById(postId)
+            
+            if (entity != null) {
+                // Update both likes list and count
+                feedItemDao.updateLikesWithCount(postId, likeCount, likesString)
+                Log.d(TAG, "Updated likes in Room for post $postId: count=$likeCount")
+            } else {
+                Log.w(TAG, "Tried to update likes for non-existent post: $postId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating likes: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Synchronize like data across feed and profile pages
+     * This ensures consistent like state for the same post across different fragments
+     */
+    suspend fun syncPostLikes(postId: String) {
+        try {
+            // Get the latest data from Firestore
+            val postSnapshot = firestore.collection("Posts").document(postId).get().await()
+            
+            if (postSnapshot.exists()) {
+                // Extract likes from Firestore
+                val likes = when (val likesValue = postSnapshot.get("likes")) {
+                    is List<*> -> likesValue.filterIsInstance<String>()
+                    else -> listOf()
+                }
+                
+                // Get the correct like count
+                val likeCount = likes.size
+                
+                // Update Room database with both likes and count
+                updateLikes(postId, likes)
+                
+                // Double-check the item exists and has correct count
+                val entity = feedItemDao.getFeedItemById(postId)
+                if (entity != null && entity.likeCount != likeCount) {
+                    // Force update the like count if it's different
+                    feedItemDao.updateLikeCount(postId, likeCount)
+                }
+                
+                Log.d(TAG, "Synchronized likes for post $postId from Firestore to Room: count=$likeCount")
+            } else {
+                Log.w(TAG, "Post $postId not found in Firestore")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error synchronizing post likes: ${e.message}", e)
+        }
+    }
+
     suspend fun clearAllFeedItems() {
         try {
             feedItemDao.deleteAllFeedItems()
@@ -184,42 +257,43 @@ class FeedRepository(
         }
     }
 
-    suspend fun loadUserPosts(userId: String): List<FeedItem> {
-        return try {
-            // First try with uppercase "UserId"
-            var result = firestore.collection("Posts")
+    suspend fun loadUserPosts(userId: String): List<FeedItem> = withContext(Dispatchers.IO) {
+        try {
+            val posts = mutableListOf<FeedItem>()
+            val firestorePosts = firestore.collection("Posts")
                 .whereEqualTo("UserId", userId)
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .get()
                 .await()
-
-            if (result.isEmpty) {
-                // If no results, try with lowercase "userId"
-                result = firestore.collection("Posts")
-                    .whereEqualTo("userId", userId)
-                    .get()
-                    .await()
-            }
-
-            val posts = result.documents.mapNotNull { doc ->
-                mapDocumentToFeedItem(doc)
-            }
             
-            // Sort by timestamp descending
-            val sortedPosts = posts.sortedByDescending { it.timestamp }
+            Log.d("FeedRepository", "Retrieved ${firestorePosts.documents.size} posts for user $userId from Firestore")
             
-            // Cache in Room
-            if (sortedPosts.isNotEmpty()) {
-                insertFeedItems(sortedPosts)
+            // Process the results
+            for (document in firestorePosts.documents) {
+                try {
+                    mapDocumentToFeedItem(document)?.let { post ->
+                        posts.add(post)
+                        
+                        // Add to Room database
+                        insertFeedItem(post)
+                    }
+                } catch (e: Exception) {
+                    Log.e("FeedRepository", "Error processing post ${document.id}: ${e.message}")
+                }
             }
             
-            sortedPosts
+            // Now update with refreshed user data (with force refresh to ensure latest data)
+            val updatedPosts = refreshUserDataInPosts(posts, forceUserRefresh = true)
+            
+            return@withContext updatedPosts
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading user posts from Firestore: ${e.message}", e)
-            emptyList()
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("FeedRepository", "Error loading user posts: ${e.message}", e)
+            return@withContext emptyList<FeedItem>()
         }
     }
 
-    private fun mapDocumentToFeedItem(doc: DocumentSnapshot): FeedItem? {
+    fun mapDocumentToFeedItem(doc: DocumentSnapshot): FeedItem? {
         try {
             val locationMap = doc.get("location") as? Map<String, Any>
             val location = if (locationMap != null) {
@@ -329,27 +403,50 @@ class FeedRepository(
     /**
      * Updates user data in a list of posts using Room database data
      * @param posts The list of posts to update
+     * @param forceUserRefresh Whether to force refresh user data from Firebase
      * @return Updated posts with fresh user data
      */
-    suspend fun refreshUserDataInPosts(posts: List<FeedItem>): List<FeedItem> = withContext(Dispatchers.IO) {
+    suspend fun refreshUserDataInPosts(posts: List<FeedItem>, forceUserRefresh: Boolean = false): List<FeedItem> = withContext(Dispatchers.IO) {
         try {
             if (posts.isEmpty()) return@withContext emptyList<FeedItem>()
             
             // Get unique user IDs from the posts
             val userIds = posts.map { it.userId }.distinct()
             
-            // Get users from Room database
-            val users = userRepository.getUsersByIds(userIds)
+            // If forcing refresh, get users directly from Firebase
+            val users = if (forceUserRefresh) {
+                // This will force refresh from Firestore for all users
+                Log.d("FeedRepository", "Force refreshing user data for ${userIds.size} users")
+                userRepository.getUsersMapByIds(userIds, forceRefresh = true).values.toList()
+            } else {
+                // Get from local cache
+                userRepository.getUsersByIds(userIds)
+            }
             
             // Create a map of userId to user data for quick lookup
             val userMap = users.associateBy { it.uid }
             
+            // Track if we made changes to any posts
+            var updatesMade = false
+            
             // Update posts with the latest user data
-            return@withContext posts.map { post ->
+            val updatedPosts = posts.map { post ->
                 val user = userMap[post.userId]
                 if (user != null) {
                     // Only create a new object if data is different
                     if (post.userName != user.name || post.userPhotoUrl != user.profilePhotoUrl) {
+                        updatesMade = true
+                        
+                        // Invalidate image cache for profile photo if it changed
+                        if (post.userPhotoUrl != user.profilePhotoUrl && !user.profilePhotoUrl.isNullOrEmpty()) {
+                            try {
+                                com.squareup.picasso.Picasso.get().invalidate(user.profilePhotoUrl)
+                                Log.d("FeedRepository", "Invalidated cache for user photo: ${user.profilePhotoUrl?.take(20)}")
+                            } catch (e: Exception) {
+                                Log.e("FeedRepository", "Error invalidating image cache: ${e.message}")
+                            }
+                        }
+                        
                         post.copy(
                             userName = user.name,
                             userPhotoUrl = user.profilePhotoUrl
@@ -361,6 +458,14 @@ class FeedRepository(
                     post // Return unchanged post if user not found
                 }
             }
+            
+            if (updatesMade) {
+                Log.d("FeedRepository", "Updated user data in ${updatedPosts.size} posts")
+            } else {
+                Log.d("FeedRepository", "No user data changes needed in posts")
+            }
+            
+            return@withContext updatedPosts
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("FeedRepository", "Error refreshing user data in posts: ${e.message}")

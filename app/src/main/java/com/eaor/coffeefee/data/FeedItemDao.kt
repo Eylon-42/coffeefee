@@ -33,4 +33,13 @@ interface FeedItemDao {
 
     @Query("UPDATE feed_items SET commentCount = :count WHERE id = :postId")
     suspend fun updateCommentCount(postId: String, count: Int)
+
+    @Query("UPDATE feed_items SET likeCount = :count WHERE id = :postId")
+    suspend fun updateLikeCount(postId: String, count: Int)
+
+    @Query("UPDATE feed_items SET likes = :likesString WHERE id = :postId")
+    suspend fun updateLikes(postId: String, likesString: String)
+
+    @Query("UPDATE feed_items SET likeCount = :count, likes = :likesString WHERE id = :postId")
+    suspend fun updateLikesWithCount(postId: String, count: Int, likesString: String)
 } 

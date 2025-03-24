@@ -1,3 +1,4 @@
+// Remove the comment markers and restore the FeedItem class
 package com.eaor.coffeefee.models
 
 import com.google.firebase.auth.FirebaseAuth
@@ -36,6 +37,36 @@ data class FeedItem(
     fun updateLikes(newLikes: List<String>) {
         likes = newLikes
         updateLikeState()
+        // Ensure likeCount matches the actual number of likes
+        likeCount = likes.size
+    }
+
+    // Add method to check if the current user has liked this post
+    fun hasUserLiked(userId: String?): Boolean {
+        return userId != null && likes.contains(userId)
+    }
+
+    // Add a method to toggle like for a specific user
+    fun toggleLike(userId: String?): Boolean {
+        if (userId == null) return false
+        
+        val wasLiked = likes.contains(userId)
+        likes = if (wasLiked) {
+            // Remove the like
+            likes.filter { it != userId }
+        } else {
+            // Add the like if not already present
+            if (!likes.contains(userId)) likes + userId else likes
+        }
+        
+        // Update like count to match the size of likes list
+        likeCount = likes.size
+        
+        // Update the isLikedByCurrentUser flag
+        updateLikeState()
+        
+        // Return the new like state
+        return !wasLiked
     }
 
     data class Location(

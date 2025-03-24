@@ -8,12 +8,12 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [
-        User::class, 
+        UserEntity::class, 
         FeedItemEntity::class, 
         CommentEntity::class,
         CoffeeShopEntity::class
     ], 
-    version = 9, 
+    version = 11, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)

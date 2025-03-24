@@ -54,6 +54,8 @@ import com.eaor.coffeefee.models.CoffeeShop
 import com.eaor.coffeefee.viewmodels.CommentsViewModel
 import com.eaor.coffeefee.GlobalState
 import com.eaor.coffeefee.CoffeefeeApplication
+import com.eaor.coffeefee.fragments.UserProfileFragment
+import com.eaor.coffeefee.repositories.UserRepository
 
 class FeedFragment : Fragment() {
     private lateinit var auth: FirebaseAuth
@@ -72,106 +74,32 @@ class FeedFragment : Fragment() {
     private val commentListeners = mutableMapOf<String, com.google.firebase.firestore.ListenerRegistration>()
 
     // BroadcastReceiver for profile updates
-    private val profileUpdateReceiver = object : BroadcastReceiver() {
+    private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.eaor.coffeefee.PROFILE_UPDATED") {
-                val userId = intent.getStringExtra("userId")
-                Log.d("FeedFragment", "Received profile update broadcast for user: $userId")
-                
-                if (userId != null) {
-                    // Refresh the feed with updated user data
-                    viewModel.refreshUserData()
+            when (intent?.action) {
+                "com.eaor.coffeefee.PROFILE_UPDATED" -> {
+                    Log.d(TAG, "Received PROFILE_UPDATED broadcast")
+                    viewModel.refreshUserData(true)
                 }
-            }
-        }
-    }
-    
-    private val feedItems = mutableListOf<FeedItem>()
-    private var isLoading = false
-    private var isLastPage = false
-    
-    // Add a BroadcastReceiver to listen for post changes
-    private val postChangeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            try {
-                if (intent == null) {
-                    Log.e("FeedFragment", "Received null intent in postChangeReceiver")
-                    return
-                }
-                
-                val action = intent.action
-                val postId = intent.getStringExtra("postId")
-                
-                when (action) {
-                    "com.eaor.coffeefee.POST_ADDED" -> {
-                        Log.d("FeedFragment", "Received post ADDED broadcast for post: $postId")
-                        // We need to refresh posts after a new post is added
-                        if (isVisible && isAdded) {
-                            viewModel.refreshPosts()
-                        } else {
-                            // If not visible, set flags to refresh when we become visible
-                            GlobalState.shouldRefreshFeed = true
-                            // Set a special flag indicating posts were actually changed, not just user data
-                            GlobalState.postsWereChanged = true
-                        }
-                    }
-                    "com.eaor.coffeefee.POST_UPDATED" -> {
-                        Log.d("FeedFragment", "Received post UPDATED broadcast for post: $postId")
-                        // For updates, invalidate the specific post's image if available
-                        intent.getStringExtra("photoUrl")?.let { url ->
-                            if (url.isNotEmpty()) {
-                                com.squareup.picasso.Picasso.get().invalidate(url)
-                            }
-                        }
-                        
-                        if (isVisible && isAdded) {
-                            viewModel.refreshPosts()
-                        } else {
-                            // If not visible, set flags to refresh when we become visible
-                            GlobalState.shouldRefreshFeed = true
-                            // Set a special flag indicating posts were actually changed, not just user data
-                            GlobalState.postsWereChanged = true
-                        }
-                    }
-                    "com.eaor.coffeefee.POST_DELETED" -> {
-                        Log.d("FeedFragment", "Received post DELETED broadcast for post: $postId")
-                        // For deletes, we need to remove the post from the feed
-                        if (isVisible && isAdded) {
-                            viewModel.refreshPosts()
-                        } else {
-                            // If not visible, set flags to refresh when we become visible
-                            GlobalState.shouldRefreshFeed = true
-                            // Set a special flag indicating posts were actually changed, not just user data
-                            GlobalState.postsWereChanged = true
-                        }
-                    }
-                    "com.eaor.coffeefee.COMMENT_UPDATED" -> {
-                        val commentCount = intent.getIntExtra("commentCount", -1)
-                        Log.d("FeedFragment", "Received COMMENT_UPDATED broadcast for post: $postId with count: $commentCount")
-                        
-                        // Only update if we have both postId and a valid comment count
-                        if (postId != null && commentCount >= 0) {
-                            Log.d("FeedFragment", "About to update comment count in adapter and ViewModel")
-                            // Debug the current adapter state
-                            if (::feedAdapter.isInitialized) {
-                                val posts = feedAdapter.getItems()
-                                val hasPost = posts.any { it.id == postId }
-                                Log.d("FeedFragment", "Adapter initialized with ${posts.size} posts. Contains post $postId: $hasPost")
-                            } else {
-                                Log.e("FeedFragment", "Feed adapter not initialized yet")
-                            }
-                            
-                            updateCommentCount(postId, commentCount)
-                        } else {
-                            Log.e("FeedFragment", "Invalid postId or commentCount in COMMENT_UPDATED broadcast")
-                        }
-                    }
-                    else -> {
-                        Log.d("FeedFragment", "Received unknown broadcast action: $action")
+                "com.eaor.coffeefee.COMMENT_UPDATED" -> {
+                    val postId = intent.getStringExtra("postId")
+                    val commentCount = intent.getIntExtra("commentCount", 0)
+                    Log.d(TAG, "Received COMMENT_UPDATED broadcast for post: $postId, count: $commentCount")
+                    if (postId != null) {
+                        viewModel.updateCommentCount(postId, commentCount)
                     }
                 }
-            } catch (e: Exception) {
-                Log.e("FeedFragment", "Error handling post change broadcast: ${e.message}", e)
+                "com.eaor.coffeefee.LIKE_UPDATED" -> {
+                    val postId = intent.getStringExtra("postId")
+                    Log.d(TAG, "Received LIKE_UPDATED broadcast for post: $postId")
+                    if (postId != null) {
+                        viewModel.updateLikesFromExternal(postId)
+                    }
+                }
+                "com.eaor.coffeefee.POST_ADDED" -> {
+                    Log.d(TAG, "Received POST_ADDED broadcast, refreshing feed")
+                    viewModel.refreshPosts()
+                }
             }
         }
     }
@@ -194,6 +122,14 @@ class FeedFragment : Fragment() {
                 viewModel.loadMorePosts()
             }
         }
+    }
+
+    // Near the top of the class, add the userRepository field
+    private lateinit var userRepository: UserRepository
+    private lateinit var feedRepository: FeedRepository
+
+    companion object {
+        private const val TAG = "FeedFragment"
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -225,19 +161,16 @@ class FeedFragment : Fragment() {
         // Initialize SwipeRefreshLayout
         swipeRefreshLayout = view.findViewById(R.id.swipeRefreshLayout)
 
-        // Initialize UserRepository with Room
-        val appDatabase = AppDatabase.getDatabase(requireContext())
-        val userDao = appDatabase.userDao()
-        val userRepository = com.eaor.coffeefee.repositories.UserRepository(userDao, db)
+        // Initialize Repository
+        val database = AppDatabase.getDatabase(requireContext())
+        userRepository = UserRepository(database.userDao(), db)
+        feedRepository = FeedRepository(database.feedItemDao(), db, userRepository)
         
         // Set user repository in the ViewModel
         viewModel.setUserRepository(userRepository)
         
         // Register for profile update events
-        registerProfileUpdateReceiver()
-        
-        // Register for post change events
-        registerPostChangeReceiver()
+        registerReceivers()
 
         // Set up RecyclerView
         recyclerView = view.findViewById(R.id.feedRecyclerView)
@@ -505,35 +438,39 @@ class FeedFragment : Fragment() {
             // First update the comment count in the ViewModel
             viewModel.updateCommentCount(postId, count)
             
-            // Then refresh from Room cache to ensure consistency
+            // Then update Room database and refresh UI
             lifecycleScope.launch {
                 try {
                     // Get the comment dao from the application database
                     val commentDao = (requireActivity().application as CoffeefeeApplication).database.commentDao()
                     
-                    // Get the actual count from Room
+                    // Update the database directly to ensure consistency
+                    commentDao.updateCommentCountForPost(postId, count)
+                    
+                    // Get the actual count from Room to confirm
                     val roomCount = commentDao.getCommentCountForPostSync(postId)
                     
-                    // If Room has a different count than what was passed, use the Room count
-                    if (roomCount != count) {
-                        Log.d("FeedFragment", "Room count ($roomCount) differs from broadcast count ($count), using Room count")
-                        viewModel.updateCommentCount(postId, roomCount)
-                    }
+                    Log.d("FeedFragment", "Room comment count for post $postId: $roomCount")
                     
-                    // Always update adapter with the count from Room for consistency
+                    // Update the UI with the new count
                     if (::feedAdapter.isInitialized) {
-                        feedAdapter.updateCommentCount(postId, roomCount)
-                        Log.d("FeedFragment", "Updated adapter with Room comment count: $roomCount")
+                        val posts = feedAdapter.getItems()
+                        val position = posts.indexOfFirst { it.id == postId }
+                        
+                        if (position >= 0) {
+                            Log.d("FeedFragment", "Updating post at position $position with comment count $roomCount")
+                            // Update the post object directly
+                            posts[position].commentCount = roomCount
+                            // Notify adapter of the change with a payload to prevent full rebind
+                            feedAdapter.notifyItemChanged(position, com.eaor.coffeefee.adapters.FeedAdapter.COMMENT_COUNT)
+                        } else {
+                            Log.d("FeedFragment", "Post $postId not found in feed posts")
+                        }
                     } else {
-                        Log.e("FeedFragment", "Feed adapter not initialized, can't update comment count")
+                        Log.e("FeedFragment", "Feed adapter not initialized")
                     }
                 } catch (e: Exception) {
-                    Log.e("FeedFragment", "Error getting count from Room: ${e.message}")
-                    
-                    // Fall back to the passed count if Room query fails
-                    if (::feedAdapter.isInitialized) {
-                        feedAdapter.updateCommentCount(postId, count)
-                    }
+                    Log.e("FeedFragment", "Error updating comment count: ${e.message}", e)
                 }
             }
         } catch (e: Exception) {
@@ -546,44 +483,39 @@ class FeedFragment : Fragment() {
         
         // Check if feed needs refreshing from global state
         val needsRefresh = com.eaor.coffeefee.GlobalState.shouldRefreshFeed
+        val profileDataChanged = com.eaor.coffeefee.GlobalState.profileDataChanged
+        val postsChanged = com.eaor.coffeefee.GlobalState.postsWereChanged
+        val profileWasEdited = com.eaor.coffeefee.GlobalState.profileWasEdited
         
-        Log.d("FeedFragment", "onResume: needsRefresh=$needsRefresh, isVisible=$isVisible")
+        Log.d("FeedFragment", "onResume: needsRefresh=$needsRefresh, profileDataChanged=$profileDataChanged, postsChanged=$postsChanged, profileWasEdited=$profileWasEdited, isVisible=$isVisible")
         
-        if (needsRefresh && isVisible) {
-            // Reset the flag right away to prevent multiple refreshes
-            com.eaor.coffeefee.GlobalState.shouldRefreshFeed = false
-            
-            Log.d("FeedFragment", "Refreshing feed due to global refresh flag")
-            
-            // Force a full refresh including latest comments
-            viewModel.refreshPosts()
-            
-            // This will trigger the loading state UI
-            if (::swipeRefreshLayout.isInitialized) {
-                swipeRefreshLayout.isRefreshing = true
-            }
-        } else {
-            // Even if no global refresh flag, check if user data needs updating
-            // This handles the case where user data may have changed but posts remain the same
-            viewModel.refreshUserData(forceRefresh = false)
-            
-            // Always check for state of swipeRefreshLayout to update UI
-            if (::swipeRefreshLayout.isInitialized && swipeRefreshLayout.isRefreshing) {
-                Log.d("FeedFragment", "SwipeRefreshLayout was refreshing, ensuring refresh continues")
-                viewModel.refreshPosts()
-            }
+        // Check if a profile edit was made and update user data if needed
+        if ((profileWasEdited || profileDataChanged) && isVisible) {
+            Log.d("FeedFragment", "Updating user data due to profile edit")
+            updateUserData()
         }
         
-        // Listen for changes in real-time
-        setupCommentCountListeners()
+        // Check if posts changed and need refreshing
+        if ((needsRefresh || postsChanged) && isVisible) {
+            Log.d("FeedFragment", "Refreshing feed due to global flag")
+            refreshFeed()
+        }
+        
+        // Register broadcast receivers
+        registerReceivers()
     }
     
     override fun onPause() {
         super.onPause()
-        // Clear comment count listeners when pausing to avoid memory leaks
-        clearCommentListeners()
-        // Save scroll position when leaving the fragment
+        
+        // Save scroll position for restoration later
         saveScrollPosition()
+        
+        // Unregister broadcast receivers
+        unregisterReceivers()
+        
+        // Clear comment count listeners
+        clearCommentListeners()
     }
 
     override fun onDestroyView() {
@@ -593,8 +525,7 @@ class FeedFragment : Fragment() {
         
         // Unregister the broadcast receivers
         try {
-            requireContext().unregisterReceiver(profileUpdateReceiver)
-            requireContext().unregisterReceiver(postChangeReceiver)
+            requireContext().unregisterReceiver(broadcastReceiver)
             Log.d("FeedFragment", "Unregistered broadcast receivers")
         } catch (e: Exception) {
             Log.e("FeedFragment", "Error unregistering receivers: ${e.message}")
@@ -631,69 +562,88 @@ class FeedFragment : Fragment() {
         }
     }
 
-    private fun registerProfileUpdateReceiver() {
+    private fun registerReceivers() {
+        val intentFilter = IntentFilter().apply {
+            addAction("com.eaor.coffeefee.PROFILE_UPDATED")
+            addAction("com.eaor.coffeefee.COMMENT_UPDATED")
+            addAction("com.eaor.coffeefee.LIKE_UPDATED") 
+            addAction("com.eaor.coffeefee.POST_ADDED")
+        }
+        
+        // On Android 13+ (API 33+), we need to specify RECEIVER_NOT_EXPORTED flag
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            requireContext().registerReceiver(broadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            requireContext().registerReceiver(broadcastReceiver, intentFilter)
+        }
+        
+        Log.d(TAG, "Broadcast receivers registered")
+    }
+    
+    private fun unregisterReceivers() {
         try {
-            val intentFilter = android.content.IntentFilter("com.eaor.coffeefee.PROFILE_UPDATED")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                requireContext().registerReceiver(profileUpdateReceiver, intentFilter, android.content.Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                requireContext().registerReceiver(profileUpdateReceiver, intentFilter)
-            }
-            Log.d("FeedFragment", "Registered broadcast receiver for profile updates")
+            requireContext().unregisterReceiver(broadcastReceiver)
+            Log.d(TAG, "Broadcast receivers unregistered")
         } catch (e: Exception) {
-            Log.e("FeedFragment", "Error registering receiver: ${e.message}")
+            Log.e(TAG, "Error unregistering receivers: ${e.message}")
         }
     }
 
-    private fun registerPostChangeReceiver() {
+    private fun refreshFeed() {
+        // Reset the flags right away to prevent multiple refreshes
+        com.eaor.coffeefee.GlobalState.shouldRefreshFeed = false
+        
+        if (com.eaor.coffeefee.GlobalState.postsWereChanged) {
+            // Only do a full refresh if actual posts were changed
+            Log.d("FeedFragment", "Refreshing feed due to post content changes")
+            com.eaor.coffeefee.GlobalState.postsWereChanged = false
+            
+            // Force a full refresh including latest comments
+            viewModel.refreshPosts()
+            
+            // This will trigger the loading state UI
+            if (::swipeRefreshLayout.isInitialized) {
+                swipeRefreshLayout.isRefreshing = true
+            }
+        } else if (com.eaor.coffeefee.GlobalState.profileDataChanged) {
+            // If only profile data changed, just refresh the user data without reloading posts
+            Log.d("FeedFragment", "Refreshing only user data due to profile changes")
+            com.eaor.coffeefee.GlobalState.profileDataChanged = false
+            viewModel.refreshUserData(forceRefresh = true)
+        } else {
+            // Even if no global refresh flag, check if user data needs updating
+            // This handles the case where user data may have changed but posts remain the same
+            viewModel.refreshUserData(forceRefresh = false)
+            
+            // Always check for state of swipeRefreshLayout to update UI
+            if (::swipeRefreshLayout.isInitialized && swipeRefreshLayout.isRefreshing) {
+                Log.d("FeedFragment", "SwipeRefreshLayout was refreshing, ensuring refresh continues")
+                viewModel.refreshPosts()
+            }
+        }
+        
+        // Listen for changes in real-time
+        setupCommentCountListeners()
+    }
+
+    private fun updateUserData() {
         try {
-            val filter = IntentFilter().apply {
-                addAction("com.eaor.coffeefee.POST_ADDED")
-                addAction("com.eaor.coffeefee.POST_UPDATED")
-                addAction("com.eaor.coffeefee.POST_DELETED")
-                addAction("com.eaor.coffeefee.COMMENT_UPDATED")
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                requireContext().registerReceiver(postChangeReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                requireContext().registerReceiver(postChangeReceiver, filter)
-            }
-            Log.d("FeedFragment", "Registered broadcast receiver for post changes")
+            Log.d("FeedFragment", "Updating user data in feed")
+            
+            // Reset the flag to prevent duplicate refreshes
+            GlobalState.profileDataChanged = false
+            GlobalState.profileWasEdited = false
+            
+            // Force refresh user data in posts to ensure latest profile changes are shown
+            viewModel.refreshUserData(forceRefresh = true)
         } catch (e: Exception) {
-            Log.e("FeedFragment", "Error registering post change receiver: ${e.message}")
+            Log.e("FeedFragment", "Error updating user data: ${e.message}")
         }
     }
 
     private fun setupSwipeRefresh() {
         swipeRefreshLayout.setOnRefreshListener {
-            Log.d("FeedFragment", "SwipeRefresh triggered")
-            // Clear any cached data and get fresh data
             viewModel.refreshPosts()
-            
-            // Also refresh comments if possible
-            try {
-                val commentViewModel = ViewModelProvider(
-                    requireActivity(),
-                    ViewModelProvider.AndroidViewModelFactory(requireActivity().application)
-                )[CommentsViewModel::class.java]
-                
-                // Initialize repositories for comment viewmodel if needed
-                val appDatabase = AppDatabase.getDatabase(requireContext())
-                val commentDao = appDatabase.commentDao()
-                val userDao = appDatabase.userDao()
-                val userRepository = com.eaor.coffeefee.repositories.UserRepository(userDao, db)
-                val commentRepository = com.eaor.coffeefee.repositories.CommentRepository(
-                    commentDao, db, userRepository
-                )
-                
-                // Initialize the repositories in the view model
-                commentViewModel.initializeRepositories(commentRepository, userRepository)
-                
-                // Now clear comments
-                commentViewModel.clearAllComments()
-            } catch (e: Exception) {
-                Log.e("FeedFragment", "Error clearing comments during refresh: ${e.message}")
-            }
         }
     }
 }

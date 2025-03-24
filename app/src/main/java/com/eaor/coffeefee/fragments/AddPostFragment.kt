@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -369,6 +370,22 @@ class AddPostFragment : Fragment() {
             .add(postData)
             .addOnSuccessListener { documentReference ->
                 Log.d("AddPostFragment", "Post added with ID: ${documentReference.id}")
+                
+                // Send broadcast to notify other fragments of the new post
+                val intent = Intent("com.eaor.coffeefee.POST_ADDED")
+                intent.putExtra("postId", documentReference.id)
+                intent.putExtra("userId", userId)
+                
+                // Set global state flags for refresh
+                com.eaor.coffeefee.GlobalState.triggerRefreshAfterContentChange()
+                
+                // Send the broadcast
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requireContext().sendBroadcast(intent, null)
+                } else {
+                    requireContext().sendBroadcast(intent)
+                }
+                Log.d("AddPostFragment", "Broadcast sent for new post: ${documentReference.id}")
 
                 // Now check if the coffee shop exists
                 val coffeeShopRef = db.collection("CoffeeShops").document(selectedPlaceId!!)

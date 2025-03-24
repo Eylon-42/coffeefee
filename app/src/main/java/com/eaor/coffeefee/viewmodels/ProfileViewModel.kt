@@ -19,6 +19,10 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import com.eaor.coffeefee.data.AppDatabase
 import com.eaor.coffeefee.GlobalState
+import com.google.firebase.Timestamp
+import android.content.Intent
+import com.eaor.coffeefee.adapters.FeedAdapter
+import kotlinx.coroutines.withContext
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
     private val storage = FirebaseStorage.getInstance()
@@ -31,6 +35,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     
     private val _updateSuccess = MutableLiveData<Boolean>()
     val updateSuccess: LiveData<Boolean> = _updateSuccess
+    
+    // Add payload for adapter updates
+    private val _payload = MutableLiveData<Pair<Int, String>>()
+    val payload: LiveData<Pair<Int, String>> = _payload
     
     private lateinit var feedRepository: FeedRepository
     private lateinit var userRepository: UserRepository
@@ -46,6 +54,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     // Error message
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
+    
+    companion object {
+        private const val TAG = "ProfileViewModel"
+    }
     
     protected fun setLoading(loading: Boolean) {
         _isLoading.value = loading
@@ -102,10 +114,16 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
     
-    fun loadUserPosts(userId: String? = null) {
+    fun loadUserPosts(userId: String? = null, forceRefresh: Boolean = false) {
+        // Check if we already have posts data and don't need to refresh
+        if (!forceRefresh && userId == _userPosts.value?.firstOrNull()?.userId && _userPosts.value?.isNotEmpty() == true) {
+            Log.d("ProfileViewModel", "Using existing posts data for user $userId (${_userPosts.value?.size} posts)")
+            return
+        }
+        
         setLoading(true)
         
-        Log.d("ProfileViewModel", "Starting to load user posts")
+        Log.d("ProfileViewModel", "Loading user posts, forceRefresh=$forceRefresh")
         
         viewModelScope.launch {
             try {
@@ -122,10 +140,12 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 // First try to get posts from local database
                 var posts = feedRepository.getFeedItemsByUserId(targetUserId)
                 
-                // If no local results, fetch from Firestore
-                if (posts.isEmpty()) {
-                    Log.d("ProfileViewModel", "No posts found in Room, fetching from Firestore")
+                // If no local results or force refresh requested, fetch from Firestore
+                if (posts.isEmpty() || forceRefresh) {
+                    Log.d("ProfileViewModel", "Fetching posts from Firestore, forceRefresh=$forceRefresh, local posts count=${posts.size}")
                     posts = feedRepository.loadUserPosts(targetUserId)
+                } else {
+                    Log.d("ProfileViewModel", "Using posts from Room database, count=${posts.size}")
                 }
                 
                 Log.d("ProfileViewModel", "Final post count: ${posts.size}")
@@ -221,7 +241,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                                      (profilePhotoUrl.isNotEmpty() && user.photoUrl?.toString() != profilePhotoUrl)
                 
                 // Update global flags to trigger UI refresh across the app
-                GlobalState.shouldRefreshProfile = true
+                GlobalState.triggerRefreshAfterProfileChange(dataChanged = true)
                 
                 // Only refresh feed if user data actually changed
                 if (userDataChanged) {
@@ -456,6 +476,252 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 } catch (e: Exception) {
                     Log.e("ProfileViewModel", "Error updating comment count: ${e.message}")
                 }
+            }
+        }
+    }
+
+    /**
+     * Update likes for a post in the profile view
+     * This handles toggling a like from the profile UI
+     */
+    fun toggleLike(postId: String) {
+        viewModelScope.launch {
+            try {
+                val userId = auth.currentUser?.uid ?: return@launch
+                
+                // Get current post data
+                val postRef = db.collection("Posts").document(postId)
+                val postSnapshot = postRef.get().await()
+                val likes = postSnapshot.get("likes") as? List<String> ?: listOf()
+                
+                // Check if user already liked the post
+                val userLiked = likes.contains(userId)
+                
+                // Toggle the like
+                val updatedLikes = if (userLiked) {
+                    likes.filter { it != userId }
+                } else {
+                    if (!likes.contains(userId)) likes + userId else likes
+                }
+                
+                // Update in Firestore
+                postRef.update(
+                    mapOf(
+                        "likes" to updatedLikes,
+                        "likeCount" to updatedLikes.size
+                    )
+                ).await()
+                
+                // Update local data
+                updatePostLikes(postId, updatedLikes)
+                
+                // Broadcast the change to ensure all fragments are updated
+                val intent = Intent("com.eaor.coffeefee.LIKE_UPDATED")
+                intent.putExtra("postId", postId)
+                intent.putExtra("likeCount", updatedLikes.size)
+                getApplication<Application>().sendBroadcast(intent)
+                
+                // Synchronize with Room database to ensure consistent state
+                feedRepository.updateLikes(postId, updatedLikes)
+                
+                Log.d("ProfileViewModel", "Like toggled for post $postId, new state: ${!userLiked}")
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Error toggling like: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Update post likes in the ViewModel and Room
+     */
+    private fun updatePostLikes(postId: String, newLikes: List<String>) {
+        val currentPosts = _userPosts.value?.toMutableList() ?: return
+        val index = currentPosts.indexOfFirst { it.id == postId }
+        
+        if (index != -1) {
+            val post = currentPosts[index]
+            // Use the FeedItem's updateLikes method for consistency
+            post.updateLikes(newLikes)
+            currentPosts[index] = post
+            _userPosts.value = currentPosts
+            
+            // Notify adapter with payload for efficient UI update
+            _payload.value = Pair(index, FeedAdapter.LIKE_COUNT)
+            
+            Log.d("ProfileViewModel", "Updated local post like state: post=$postId, likeCount=${post.likeCount}")
+        }
+    }
+    
+    /**
+     * Update likes from external sources (broadcasts from other fragments)
+     */
+    fun updateLikesFromExternal(postId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Starting updateLikesFromExternal for postId: $postId")
+                val userId = auth.currentUser?.uid
+
+                // Get the latest likes data from Firestore
+                val postDoc = db.collection("Posts").document(postId).get().await()
+                if (postDoc.exists()) {
+                    val postData = postDoc.data
+                    if (postData != null) {
+                        val likes = postData["likes"] as? List<String> ?: listOf()
+                        val likeCount = likes.size
+                        Log.d(TAG, "Firestore data for post $postId: likes=$likes, count=$likeCount")
+
+                        // Update in Room database
+                        feedRepository.updateLikes(postId, likes)
+                        feedRepository.updateLikeCount(postId, likeCount)
+                        Log.d(TAG, "Updated Room database for post $postId")
+
+                        // Update in-memory posts
+                        val updatedPosts = _userPosts.value?.map { post ->
+                            if (post.id == postId) {
+                                post.updateLikes(likes)
+                                post.likeCount = likeCount
+                                post.isLikedByCurrentUser = userId != null && post.hasUserLiked(userId)
+                                Log.d(TAG, "Updated in-memory post $postId, liked by user: ${post.isLikedByCurrentUser}")
+                                post
+                            } else {
+                                post
+                            }
+                        } ?: listOf()
+
+                        withContext(Dispatchers.Main) {
+                            _userPosts.value = updatedPosts
+                            // Ensure GlobalState is updated
+                            GlobalState.postsWereChanged = true
+                            GlobalState.shouldRefreshFeed = true
+                            Log.d(TAG, "Updated _userPosts and set GlobalState flags")
+                        }
+                    }
+                } else {
+                    Log.e(TAG, "Post document $postId doesn't exist in Firestore")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in updateLikesFromExternal: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Get user profile data from repository with caching
+     * @param userId The user ID to get profile for
+     * @param forceRefresh Whether to force refresh from network
+     * @param maxAgeMinutes Maximum age of cached data in minutes
+     */
+    fun getUserProfile(userId: String, forceRefresh: Boolean = false, maxAgeMinutes: Int = 30) {
+        _isLoading.value = true
+        viewModelScope.launch {
+            try {
+                Log.d("ProfileViewModel", "Getting user profile for $userId (forceRefresh=$forceRefresh)")
+                
+                // Get user data from repository with caching logic
+                val user = userRepository.getUserData(userId, forceRefresh, maxAgeMinutes)
+                
+                if (user != null) {
+                    Log.d("ProfileViewModel", "Loaded user: ${user.name}")
+                    
+                    // Build map with non-nullable values for required fields
+                    val userMap = HashMap<String, Any>()
+                    userMap["uid"] = user.uid ?: ""
+                    userMap["name"] = user.name ?: ""
+                    userMap["email"] = user.email ?: ""
+                    userMap["profilePhotoUrl"] = user.profilePhotoUrl ?: ""
+                    userMap["lastUpdatedTimestamp"] = user.lastUpdatedTimestamp
+                    
+                    // Update LiveData with user data
+                    _userData.value = userMap
+                    
+                    // Trigger refresh for all posts by this user since user data has changed
+                    if (forceRefresh) {
+                        refreshUserPosts(userId)
+                        
+                        // Also mark global state so other fragments can refresh
+                        GlobalState.profileDataChanged = true
+                    }
+                } else {
+                    Log.e("ProfileViewModel", "No user data found for $userId")
+                    _errorMessage.value = "User not found"
+                }
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Error loading user profile: ${e.message}")
+                _errorMessage.value = "Failed to load profile: ${e.message}"
+            } finally {
+                // Always update loading state
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Refresh a specific post rather than all user posts
+     */
+    fun refreshSpecificPost(postId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d("ProfileViewModel", "Refreshing specific post: $postId")
+                // Get the post from Firestore
+                val postRef = db.collection("Posts").document(postId)
+                val postSnapshot = postRef.get().await()
+                
+                if (postSnapshot.exists()) {
+                    // Map to FeedItem
+                    val post = feedRepository.mapDocumentToFeedItem(postSnapshot)
+                    
+                    if (post != null) {
+                        // Update in Room database
+                        feedRepository.insertFeedItem(post)
+                        
+                        // Update in-memory post list if it contains this post
+                        val currentPosts = _userPosts.value?.toMutableList() ?: mutableListOf()
+                        val index = currentPosts.indexOfFirst { it.id == postId }
+                        
+                        if (index != -1) {
+                            // Replace the post at the same position
+                            currentPosts[index] = post
+                            _userPosts.value = currentPosts
+                            
+                            // Notify adapter to update only this item
+                            _payload.value = Pair(index, "all_data")
+                            
+                            Log.d("ProfileViewModel", "Updated specific post in profile: $postId")
+                        }
+                    }
+                } else {
+                    // Post no longer exists, remove it
+                    removePostFromUserPosts(postId)
+                }
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Error refreshing specific post: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Remove a specific post from user posts list
+     */
+    fun removePostFromUserPosts(postId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d("ProfileViewModel", "Removing post from user posts: $postId")
+                
+                // Remove from Room database
+                feedRepository.deleteFeedItem(postId)
+                
+                // Remove from in-memory list
+                val currentPosts = _userPosts.value?.toMutableList() ?: return@launch
+                val index = currentPosts.indexOfFirst { it.id == postId }
+                
+                if (index != -1) {
+                    currentPosts.removeAt(index)
+                    _userPosts.value = currentPosts
+                    
+                    Log.d("ProfileViewModel", "Removed post from user posts: $postId")
+                }
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Error removing post from user posts: ${e.message}")
             }
         }
     }

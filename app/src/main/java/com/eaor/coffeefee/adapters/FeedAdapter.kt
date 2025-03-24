@@ -22,6 +22,7 @@ import com.eaor.coffeefee.utils.CircleTransform
 import com.squareup.picasso.MemoryPolicy
 import com.squareup.picasso.NetworkPolicy
 import com.eaor.coffeefee.utils.ImageLoader
+import android.content.Intent
 
 class FeedAdapter(
     private val _feedItems: MutableList<FeedItem>, // Rename to _feedItems
@@ -77,7 +78,7 @@ class FeedAdapter(
                     
                     try {
                         // Use notifyItemChanged with payload for efficiency
-                        notifyItemChanged(position, PAYLOAD_COMMENT_COUNT)
+                        notifyItemChanged(position, COMMENT_COUNT)
                         Log.d("FeedAdapter", "Successfully notified adapter with payload for position $position")
                     } catch (e: Exception) {
                         Log.e("FeedAdapter", "Error in notifyItemChanged with payload: ${e.message}")
@@ -177,39 +178,50 @@ class FeedAdapter(
         return _feedItems.toList()
     }
 
-    // Method to update user data in all posts
-    fun updateUserData(userId: String, userName: String, userPhotoUrl: String?) {
-        var updated = false
+    // Update specific posts efficiently with payloads
+    companion object {
+        const val COMMENT_COUNT = "comment_count"
+        const val LIKE_COUNT = "like_count"
+        const val USER_DATA = "user_data"
         
-        // Update all posts by this user
+        // Cache for avoiding duplicate user data updates
+        private val userDataCache = mutableMapOf<String, Pair<String, String?>>() // userId -> (name, photoUrl)
+    }
+
+    /**
+     * Update user data across all posts by this user
+     * This optimizes the update to avoid unnecessary refreshes
+     */
+    fun updateUserData(userId: String, userName: String, userPhotoUrl: String?) {
+        // Check if we already have this exact user data cached
+        val cachedData = userDataCache[userId]
+        if (cachedData != null && cachedData.first == userName && cachedData.second == userPhotoUrl) {
+            Log.d("FeedAdapter", "Skipping user data update - no changes detected for user $userId")
+            return
+        }
+        
+        // Save to cache
+        userDataCache[userId] = Pair(userName, userPhotoUrl)
+        
+        // Find all posts by this user and update them
+        var updatedCount = 0
         for (i in _feedItems.indices) {
             if (_feedItems[i].userId == userId) {
-                Log.d("FeedAdapter", "Updating post at position $i for user $userId")
+                val dataChanged = _feedItems[i].userName != userName || _feedItems[i].userPhotoUrl != userPhotoUrl
                 
-                // Update the post data
-                _feedItems[i].userName = userName
-                _feedItems[i].userPhotoUrl = userPhotoUrl
-                updated = true
-                
-                // Clear Picasso's cache for this URL if available
-                if (!userPhotoUrl.isNullOrEmpty()) {
-                    try {
-                        // This forces Picasso to invalidate its cache for this URL
-                        Picasso.get().invalidate(userPhotoUrl)
-                    } catch (e: Exception) {
-                        Log.e("FeedAdapter", "Error invalidating Picasso cache: ${e.message}")
-                    }
+                if (dataChanged) {
+                    _feedItems[i].userName = userName
+                    _feedItems[i].userPhotoUrl = userPhotoUrl
+                    
+                    // Notify with payload to avoid full rebind
+                    notifyItemChanged(i, USER_DATA)
+                    updatedCount++
                 }
-                
-                // Notify that this specific item changed
-                notifyItemChanged(i)
             }
         }
         
-        if (updated) {
-            Log.d("FeedAdapter", "Updated user data for user $userId in adapter")
-        } else {
-            Log.d("FeedAdapter", "No posts found for user $userId in adapter")
+        if (updatedCount > 0) {
+            Log.d("FeedAdapter", "Updated user data for $updatedCount posts by user $userId")
         }
     }
 
@@ -281,9 +293,18 @@ class FeedAdapter(
         }
     }
 
-    companion object {
-        private const val PAYLOAD_COMMENT_COUNT = "payload_comment_count"
-        const val COMMENT_COUNT = "COMMENT_COUNT"
+    fun notifyCommentCountChanged(position: Int) {
+        try {
+            if (position in 0 until _feedItems.size) {
+                Log.d("FeedAdapter", "Notifying comment count changed at position $position")
+                // Use the COMMENT_COUNT constant instead of PAYLOAD_COMMENT_COUNT
+                notifyItemChanged(position, COMMENT_COUNT)
+            } else {
+                Log.e("FeedAdapter", "Invalid position for comment count update: $position")
+            }
+        } catch (e: Exception) {
+            Log.e("FeedAdapter", "Error in notifyCommentCountChanged: ${e.message}")
+        }
     }
 
     inner class FeedViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -307,7 +328,9 @@ class FeedAdapter(
         fun bind(feedItem: FeedItem) {
             // Ensure we have a valid username to display
             val displayName = if (feedItem.userName.isNullOrEmpty()) {
-                "Unknown User"
+                // Just use empty string instead of "Unknown User"
+                // The name will be updated when we get real data
+                ""
             } else {
                 feedItem.userName
             }
@@ -316,12 +339,16 @@ class FeedAdapter(
             locationName.text = feedItem.location?.name
             reviewText.text = feedItem.experienceDescription
 
-            // Load user avatar
+            // Load user avatar with cache-first strategy
             val userAvatar = itemView.findViewById<ImageView>(R.id.userAvatar)
-            // Use existing ImageLoader method to maintain compatibility
-            ImageLoader.loadProfileImage(userAvatar, feedItem.userPhotoUrl)
+            // Use our improved ImageLoader with caching enabled
+            ImageLoader.loadProfileImage(
+                imageView = userAvatar,
+                imageUrl = feedItem.userPhotoUrl,
+                forceRefresh = false  // Use cached version by default
+            )
             
-            // Load post photo
+            // Load post photo - this doesn't need special caching
             if (!feedItem.photoUrl.isNullOrEmpty()) {
                 ImageLoader.loadPostImage(postImage, feedItem.photoUrl)
                 postImage.visibility = View.VISIBLE
@@ -343,52 +370,76 @@ class FeedAdapter(
 
                 isLikeInProgress = true
 
-                // Toggle like state
+                // Toggle like state in UI to give immediate feedback
                 val isCurrentlyLiked = feedItem.isLikedByCurrentUser
                 feedItem.isLikedByCurrentUser = !isCurrentlyLiked
 
-                // Update like count and likes list
+                // Update like count for immediate UI feedback
                 if (isCurrentlyLiked) {
                     feedItem.likeCount -= 1
-                    feedItem.likes = feedItem.likes.filter { it != userId } // Remove user ID from likes
                 } else {
                     feedItem.likeCount += 1
-                    if (!feedItem.likes.contains(userId)) {
-                        feedItem.likes = feedItem.likes + userId // Add user ID to likes
-                    }
                 }
 
+                // Update UI
                 likeCount.text = feedItem.likeCount.toString()
                 animateLikeButton(!isCurrentlyLiked)
 
-                val postRef = db.collection("Posts").document(feedItem.id)
+                // Set global state to refresh both fragments
+                com.eaor.coffeefee.GlobalState.shouldRefreshFeed = true
+                com.eaor.coffeefee.GlobalState.shouldRefreshProfile = true
+                
+                // Use the MainActivity to access the shared FeedViewModel for toggling the like
+                val activity = itemView.context as? com.eaor.coffeefee.MainActivity
+                if (activity != null) {
+                    // Use the shared ViewModel for consistent handling
+                    val feedViewModel = androidx.lifecycle.ViewModelProvider(activity)[com.eaor.coffeefee.viewmodels.FeedViewModel::class.java]
+                    feedViewModel.toggleLike(feedItem.id)
+                    isLikeInProgress = false
+                } else {
+                    // Fallback to direct Firestore if MainActivity is not available
+                    val postRef = db.collection("Posts").document(feedItem.id)
 
-                db.runTransaction { transaction ->
-                    val post = transaction.get(postRef)
-                    val likes = post.get("likes") as? List<String> ?: listOf()
+                    db.runTransaction { transaction ->
+                        val post = transaction.get(postRef)
+                        val likes = post.get("likes") as? List<String> ?: listOf()
 
-                    // Update likes list in Firestore
-                    if (isCurrentlyLiked) {
-                        transaction.update(postRef,
-                            "likes", likes.filter { it != userId },
-                            "likeCount", FieldValue.increment(-1)
-                        )
-                    } else {
-                        transaction.update(postRef,
-                            "likes", likes + userId,
-                            "likeCount", FieldValue.increment(1)
-                        )
+                        // Update likes list in Firestore
+                        if (isCurrentlyLiked) {
+                            // Ensure the user's ID is in the list before removing it
+                            if (likes.contains(userId)) {
+                                transaction.update(postRef,
+                                    "likes", likes.filter { it != userId },
+                                    "likeCount", likes.size - 1
+                                )
+                            }
+                        } else {
+                            // Only add the user ID if it's not already in the list
+                            if (!likes.contains(userId)) {
+                                transaction.update(postRef,
+                                    "likes", likes + userId,
+                                    "likeCount", likes.size + 1
+                                )
+                            }
+                        }
+                    
+                        // Transaction successful
+                        null
+                    }.addOnSuccessListener {
+                        // Send broadcast to update all instances of this post across the app
+                        val intent = Intent("com.eaor.coffeefee.LIKE_UPDATED")
+                        intent.putExtra("postId", feedItem.id)
+                        intent.putExtra("likeCount", feedItem.likeCount)
+                        itemView.context.sendBroadcast(intent)
+                        isLikeInProgress = false
+                    }.addOnFailureListener {
+                        // Revert UI changes if the operation failed
+                        feedItem.isLikedByCurrentUser = isCurrentlyLiked
+                        feedItem.likeCount += if (isCurrentlyLiked) 1 else -1
+                        likeCount.text = feedItem.likeCount.toString()
+                        animateLikeButton(isCurrentlyLiked)
+                        isLikeInProgress = false
                     }
-                }.addOnSuccessListener {
-                    // Transaction successful, no need to revert UI changes
-                    isLikeInProgress = false
-                }.addOnFailureListener {
-                    // Revert UI changes if the operation failed
-                    feedItem.isLikedByCurrentUser = isCurrentlyLiked
-                    feedItem.likeCount += if (isCurrentlyLiked) 1 else -1
-                    likeCount.text = feedItem.likeCount.toString()
-                    animateLikeButton(isCurrentlyLiked)
-                    isLikeInProgress = false
                 }
             }
 
@@ -454,38 +505,64 @@ class FeedAdapter(
 
     override fun onBindViewHolder(holder: FeedViewHolder, position: Int) {
         val feedItem = _feedItems[position]
-        
-        // Don't double load user photo here - it's already handled in the bind method
-        // which is called right after this
-        
         holder.bind(feedItem)
     }
 
     override fun onBindViewHolder(holder: FeedViewHolder, position: Int, payloads: List<Any>) {
-        if (payloads.isNotEmpty()) {
-            // Handle our payload types
-            when {
-                payloads.contains(PAYLOAD_COMMENT_COUNT) || payloads.contains("COMMENT_COUNT") -> {
-                    // Only update the comment count text
-                    try {
-                        val count = _feedItems[position].commentCount
-                        Log.d("FeedAdapter", "Binding comment count update: position=$position, count=$count")
-                        holder.commentCount.text = count.toString()
-                    } catch (e: Exception) {
-                        Log.e("FeedAdapter", "Error updating comment count in ViewHolder: ${e.message}")
-                        // Fallback to full rebind
-                        super.onBindViewHolder(holder, position, payloads)
-                    }
+        if (payloads.isEmpty()) {
+            super.onBindViewHolder(holder, position, payloads)
+            return
+        }
+        
+        val feedItem = _feedItems[position]
+        
+        // Efficient partial rebinding with payloads
+        for (payload in payloads) {
+            when (payload) {
+                COMMENT_COUNT -> {
+                    // Only update the comment count part of the view
+                    holder.itemView.findViewById<TextView>(R.id.commentCount).text = 
+                        feedItem.commentCount.toString()
                 }
-                else -> {
-                    // For other payload types, do a full rebind
-                    super.onBindViewHolder(holder, position, payloads)
+                LIKE_COUNT -> {
+                    // Only update the like count and state
+                    holder.itemView.findViewById<TextView>(R.id.likeCount).text = 
+                        feedItem.likeCount.toString()
+                    
+                    // Update like button state
+                    val likeButton = holder.itemView.findViewById<ImageButton>(R.id.likeButton)
+                    val isLiked = feedItem.isLikedByCurrentUser || 
+                        (auth.currentUser?.uid != null && feedItem.likes.contains(auth.currentUser?.uid))
+                    
+                    updateLikeButtonState(likeButton, isLiked)
+                }
+                USER_DATA -> {
+                    // Only update user-related data
+                    val userName = holder.itemView.findViewById<TextView>(R.id.userName)
+                    val userAvatar = holder.itemView.findViewById<ImageView>(R.id.userAvatar)
+                    
+                    userName.text = feedItem.userName
+                    
+                    // Use cache-first loading to avoid flickering
+                    ImageLoader.loadProfileImage(
+                        imageView = userAvatar,
+                        imageUrl = feedItem.userPhotoUrl,
+                        forceRefresh = false
+                    )
                 }
             }
-        } else {
-            // No payloads, do a full rebind
-            super.onBindViewHolder(holder, position, payloads)
         }
+    }
+
+    private fun updateLikeButtonState(likeButton: ImageButton, isLiked: Boolean) {
+        // Set the initial state without animation
+        likeButton.setImageResource(
+            if (isLiked) R.drawable.ic_heart_filled
+            else R.drawable.ic_heart_outline
+        )
+        likeButton.setColorFilter(
+            ContextCompat.getColor(likeButton.context, R.color.coffee_primary)
+        )
     }
 
     override fun getItemCount() = _feedItems.size

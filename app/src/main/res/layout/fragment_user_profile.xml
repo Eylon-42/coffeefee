@@ -66,6 +66,18 @@
                 app:layout_constraintEnd_toStartOf="@id/editButton"
                 tools:text="John Doe" />
 
+            <!-- Add loading indicator for user data -->
+            <ProgressBar
+                android:id="@+id/userDataLoadingIndicator"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="16dp"
+                android:indeterminateTint="@color/coffee_primary"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="@id/userName"
+                app:layout_constraintStart_toEndOf="@id/userAvatar"
+                app:layout_constraintBottom_toBottomOf="@id/userName" />
+
             <TextView
                 android:id="@+id/userEmail"
                 android:layout_width="0dp"
@@ -81,29 +93,20 @@
                 app:layout_constraintEnd_toStartOf="@id/editButton"
                 tools:text="john.doe@example.com" />
 
-            <TextView
-                android:id="@+id/joinDateLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="12dp"
-                android:text="Member since"
-                android:textSize="12sp"
-                android:textColor="@android:color/darker_gray"
-                app:layout_constraintTop_toBottomOf="@id/userEmail"
-                app:layout_constraintStart_toEndOf="@id/userAvatar" />
+            
 
             <TextView
                 android:id="@+id/joinDate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="4dp"
                 android:textSize="12sp"
                 android:textStyle="italic"
                 android:textColor="@android:color/darker_gray"
-                app:layout_constraintTop_toTopOf="@id/joinDateLabel"
-                app:layout_constraintStart_toEndOf="@id/joinDateLabel"
-                tools:text="Jan 2023" />
+                app:layout_constraintTop_toBottomOf="@id/userEmail"
+                app:layout_constraintStart_toEndOf="@id/userAvatar"
+                tools:text="Joined: Jan 2023" />
 
             <ImageButton
                 android:id="@+id/editButton"

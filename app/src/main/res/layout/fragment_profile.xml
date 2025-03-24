@@ -68,6 +68,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Add a loading indicator near the edit fields -->
+    <ProgressBar
+        android:id="@+id/userDataLoadingIndicator"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:indeterminateTint="@color/coffee_primary"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/editUserName"
+        app:layout_constraintStart_toStartOf="@id/editUserName"
+        app:layout_constraintEnd_toEndOf="@id/editUserName"
+        app:layout_constraintBottom_toBottomOf="@id/editUserName" />
+
     <TextView
         android:id="@+id/emailLabel"
         android:layout_width="wrap_content"

@@ -86,4 +86,11 @@ interface CommentDao {
      */
     @Query("DELETE FROM comments")
     suspend fun deleteAllComments()
+    
+    /**
+     * Update the comment count for a specific post directly
+     * This is for keeping the post's comment count in sync with the actual comments
+     */
+    @Query("UPDATE feed_items SET commentCount = :count WHERE id = :postId")
+    suspend fun updateCommentCountForPost(postId: String, count: Int)
 } 

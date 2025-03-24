@@ -20,6 +20,18 @@ object GlobalState {
     var postsWereChanged: Boolean = false
     
     /**
+     * Flag to indicate if user profile data was actually changed
+     * Used to optimize refresh operations
+     */
+    var profileDataChanged: Boolean = false
+    
+    /**
+     * Flag to indicate if a profile was just edited in the profile editor
+     * Used to specifically track edits from the profile editor
+     */
+    var profileWasEdited: Boolean = false
+    
+    /**
      * Reset all refresh flags
      */
     fun resetAllRefreshFlags() {
@@ -27,6 +39,8 @@ object GlobalState {
         shouldRefreshProfile = false
         shouldRefreshCoffeeShops = false
         postsWereChanged = false
+        profileDataChanged = false
+        profileWasEdited = false
     }
     
     /**
@@ -43,11 +57,13 @@ object GlobalState {
     /**
      * Set all flags related to user profile changes.
      * This ensures all views update with the latest user data.
+     * @param dataChanged Whether profile data was actually modified
      */
-    fun triggerRefreshAfterProfileChange() {
-        shouldRefreshFeed = true
+    fun triggerRefreshAfterProfileChange(dataChanged: Boolean = false) {
+        shouldRefreshFeed = dataChanged  // Only refresh feed if data actually changed
         shouldRefreshProfile = true
-        // Don't set postsWereChanged since only user data changed, not post content
+        profileDataChanged = dataChanged  // Track if actual changes were made
+        profileWasEdited = true  // Indicate the profile was edited in the editor
     }
     
     /**
@@ -57,6 +73,7 @@ object GlobalState {
     fun triggerRefreshAfterCommentChange() {
         shouldRefreshFeed = true
         shouldRefreshProfile = true
+        profileDataChanged = true  // Mark that profile data has changed via comments
         // Don't set postsWereChanged since only comment data changed, not post content
     }
 } 

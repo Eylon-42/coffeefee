@@ -20,10 +20,31 @@ import kotlinx.coroutines.withContext
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import com.eaor.coffeefee.GlobalState
+import android.content.Intent
+import com.eaor.coffeefee.adapters.FeedAdapter
 
 class FeedViewModel(application: Application) : AndroidViewModel(application) {
+    // Firebase
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+    
+    // MutableLiveData
     private val _feedPosts = MutableLiveData<List<FeedItem>>()
     val feedPosts: LiveData<List<FeedItem>> = _feedPosts
+    
+    private val _isLoading = MutableLiveData<Boolean>()
+    val isLoading: LiveData<Boolean> = _isLoading
+    
+    private val _errorMessage = MutableLiveData<String?>()
+    val errorMessage: LiveData<String?> = _errorMessage
+    
+    // Add payload for adapter updates
+    private val _payload = MutableLiveData<Pair<Int, String>>()
+    val payload: LiveData<Pair<Int, String>> = _payload
+    
+    // Add flag to trigger full refresh of feed
+    private val _refreshFeed = MutableLiveData<Boolean>()
+    val refreshFeed: LiveData<Boolean> = _refreshFeed
 
     private var lastVisible: DocumentSnapshot? = null
     private val loadedPostIds = HashSet<String>()
@@ -31,18 +52,6 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     private val feedRepository: FeedRepository
     private lateinit var userRepository: UserRepository
     
-    // Firebase instances
-    protected val auth = FirebaseAuth.getInstance()
-    protected val db = FirebaseFirestore.getInstance()
-    
-    // Loading state
-    private val _isLoading = MutableLiveData<Boolean>()
-    val isLoading: LiveData<Boolean> = _isLoading
-    
-    // Error message
-    private val _errorMessage = MutableLiveData<String?>()
-    val errorMessage: LiveData<String?> = _errorMessage
-
     init {
         // Initialize Repository in the constructor
         val database = AppDatabase.getDatabase(application)
@@ -200,11 +209,14 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 val postSnapshot = postRef.get().await()
                 val likes = postSnapshot.get("likes") as? List<String> ?: listOf()
                 
+                // Check if user already liked the post
+                val userLiked = likes.contains(userId)
+                
                 // Toggle the like
-                val updatedLikes = if (likes.contains(userId)) {
+                val updatedLikes = if (userLiked) {
                     likes.filter { it != userId }
                 } else {
-                    likes + userId
+                    if (!likes.contains(userId)) likes + userId else likes
                 }
                 
                 // Update in Firestore
@@ -217,6 +229,17 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Update local data
                 updatePostLikes(postId, updatedLikes)
+                
+                // Broadcast the change to ensure all fragments are updated
+                val intent = Intent("com.eaor.coffeefee.LIKE_UPDATED")
+                intent.putExtra("postId", postId)
+                intent.putExtra("likeCount", updatedLikes.size)
+                getApplication<Application>().sendBroadcast(intent)
+                
+                // Synchronize with Room database to ensure consistent state
+                feedRepository.updateLikes(postId, updatedLikes)
+                
+                Log.d("FeedViewModel", "Like toggled for post $postId, new state: ${!userLiked}")
             } catch (e: Exception) {
                 setError("Error toggling like: ${e.message}")
             }
@@ -229,10 +252,66 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         
         if (index != -1) {
             val post = currentPosts[index]
+            // Use the FeedItem's updateLikes method for consistency
             post.updateLikes(newLikes)
-            post.likeCount = newLikes.size
             currentPosts[index] = post
             _feedPosts.value = currentPosts
+            
+            // Notify adapter with payload for efficient UI update
+            _payload.value = Pair(index, FeedAdapter.LIKE_COUNT)
+            
+            Log.d("FeedViewModel", "Updated local post like state: post=$postId, likeCount=${post.likeCount}")
+        }
+    }
+    
+    // Update like status from external sources (like broadcasts)
+    fun updateLikesFromExternal(postId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Log.d("FeedViewModel", "Starting updateLikesFromExternal for postId: $postId")
+                val userId = auth.currentUser?.uid
+
+                // Get the latest likes data from Firestore
+                val postDoc = db.collection("Posts").document(postId)
+                val postSnapshot = postDoc.get().await()
+                if (postSnapshot.exists()) {
+                    val postData = postSnapshot.data
+                    if (postData != null) {
+                        val likes = postData["likes"] as? List<String> ?: listOf()
+                        val likeCount = likes.size
+                        Log.d("FeedViewModel", "Firestore data for post $postId: likes=$likes, count=$likeCount")
+
+                        // Update in Room database
+                        feedRepository.updateLikes(postId, likes)
+                        feedRepository.updateLikeCount(postId, likeCount)
+                        Log.d("FeedViewModel", "Updated Room database for post $postId")
+
+                        // Update in-memory posts
+                        val updatedPosts = _feedPosts.value?.map { post ->
+                            if (post.id == postId) {
+                                post.updateLikes(likes)
+                                post.likeCount = likeCount
+                                post.isLikedByCurrentUser = userId != null && post.hasUserLiked(userId)
+                                Log.d("FeedViewModel", "Updated in-memory post $postId, liked by user: ${post.isLikedByCurrentUser}")
+                                post
+                            } else {
+                                post
+                            }
+                        } ?: listOf()
+
+                        withContext(Dispatchers.Main) {
+                            _feedPosts.value = updatedPosts
+                            // Ensure GlobalState is updated
+                            GlobalState.postsWereChanged = true
+                            Log.d("FeedViewModel", "Updated _feedPosts and set GlobalState flags")
+                        }
+                    }
+                } else {
+                    Log.e("FeedViewModel", "Post document $postId doesn't exist in Firestore")
+                }
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Error in updateLikesFromExternal: ${e.message}", e)
+            }
         }
     }
 
@@ -614,6 +693,127 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
                 setError("Error refreshing user data: ${e.message}")
             } finally {
                 setLoading(false)
+            }
+        }
+    }
+
+    /**
+     * Force refreshes user data in the current feed posts and persists changes
+     * This is used when a post or profile has been updated and requires immediate refresh
+     */
+    fun forceRefreshUserDataInPosts() {
+        if (_feedPosts.value.isNullOrEmpty()) {
+            Log.d("FeedViewModel", "No posts to refresh user data for")
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                Log.d("FeedViewModel", "Force refreshing user data in feed posts")
+                val currentPosts = _feedPosts.value ?: emptyList()
+                
+                // Use repository method which will force refresh from Firebase
+                val updatedPosts = feedRepository.refreshUserDataInPosts(currentPosts, forceUserRefresh = true)
+                
+                // Update the LiveData with fresh posts
+                if (updatedPosts.isNotEmpty()) {
+                    _feedPosts.value = updatedPosts
+                    
+                    // Cache the updated posts
+                    cachePosts()
+                    
+                    Log.d("FeedViewModel", "Successfully refreshed user data in ${updatedPosts.size} posts")
+                }
+                
+                // Reset global refresh flags
+                GlobalState.shouldRefreshFeed = false
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e("FeedViewModel", "Error force refreshing user data in posts: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Refresh a specific post rather than the whole feed
+     * More efficient than refreshing the entire feed for a single post update
+     */
+    fun refreshSpecificPost(postId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d("FeedViewModel", "Refreshing specific post: $postId")
+                // Get the post from Firestore
+                val postRef = db.collection("Posts").document(postId)
+                val postSnapshot = postRef.get().await()
+                
+                if (postSnapshot.exists()) {
+                    // Map to FeedItem
+                    val post = feedRepository.mapDocumentToFeedItem(postSnapshot)
+                    
+                    if (post != null) {
+                        // Update in Room database
+                        feedRepository.insertFeedItem(post)
+                        
+                        // Update in-memory post list if it contains this post
+                        val currentPosts = _feedPosts.value?.toMutableList() ?: mutableListOf()
+                        val index = currentPosts.indexOfFirst { it.id == postId }
+                        
+                        if (index != -1) {
+                            // Replace the post at the same position
+                            currentPosts[index] = post
+                            _feedPosts.value = currentPosts
+                            
+                            // Notify adapter to update only this item
+                            _payload.value = Pair(index, "all_data")
+                            
+                            Log.d("FeedViewModel", "Updated specific post in feed: $postId")
+                        } else {
+                            // If post isn't in the current feed, it might be a new post
+                            // that should be at the top of the feed
+                            Log.d("FeedViewModel", "Post not found in current feed, refreshing all posts")
+                            refreshPosts()
+                        }
+                    }
+                } else {
+                    // Post no longer exists, remove it
+                    removePostFromFeed(postId)
+                }
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Error refreshing specific post: ${e.message}")
+                // If there's an error, fall back to refreshing all posts
+                refreshPosts()
+            }
+        }
+    }
+    
+    /**
+     * Remove a specific post from the feed
+     * Used when a post is deleted
+     */
+    fun removePostFromFeed(postId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d("FeedViewModel", "Removing post from feed: $postId")
+                
+                // Remove from Room database
+                feedRepository.deleteFeedItem(postId)
+                
+                // Remove from in-memory list
+                val currentPosts = _feedPosts.value?.toMutableList() ?: return@launch
+                val index = currentPosts.indexOfFirst { it.id == postId }
+                
+                if (index != -1) {
+                    currentPosts.removeAt(index)
+                    _feedPosts.value = currentPosts
+                    
+                    // Since we're removing an item, we need to notify the entire dataset changed
+                    // or use a more specific notification like notifyItemRemoved in the adapter
+                    _refreshFeed.value = true
+                    
+                    Log.d("FeedViewModel", "Removed post from feed: $postId")
+                }
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Error removing post from feed: ${e.message}")
             }
         }
     }
