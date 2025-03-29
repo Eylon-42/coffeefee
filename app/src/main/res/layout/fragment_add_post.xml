@@ -80,11 +80,11 @@
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:src="@drawable/ai_logo"
-                android:contentDescription="AI Logo"
-                android:layout_alignParentBottom="true"
-                android:layout_alignParentEnd="true"
-                android:layout_margin="8dp"
-                android:visibility="visible"/>
+                    android:contentDescription="AI Logo"
+                    android:layout_alignParentBottom="true"
+                    android:layout_alignParentEnd="true"
+                    android:layout_margin="8dp"
+                    android:visibility="invisible"/>
 
             </RelativeLayout>
 
