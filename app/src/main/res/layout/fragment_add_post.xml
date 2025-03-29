@@ -58,31 +58,42 @@
                 android:layout_marginTop="8dp"
                 android:text="Add Image"/>
 
-            <EditText
-                android:id="@+id/experienceDescription"
+            <!-- Experience Description Block -->
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:hint="Describe your experience..."
-                android:background="@drawable/edit_text_background"
-                android:minHeight="100dp"
-                android:gravity="top"
-                android:padding="12dp"/>
-                
-            <Button
-                android:id="@+id/generateDescriptionButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Generate Description with AI"
-                android:visibility="gone"/>
+                android:layout_marginTop="16dp">
+
+                <EditText
+                    android:id="@+id/experienceDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Describe your experience..."
+                    android:background="@drawable/edit_text_background"
+                    android:minHeight="100dp"
+                    android:gravity="top"
+                    android:padding="12dp"/>
+
+                <!-- AI Logo ImageView -->
+                <ImageView
+                    android:id="@+id/generateDescriptionButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ai_logo"
+                    android:contentDescription="AI Logo"
+                    android:layout_alignParentBottom="true"
+                    android:layout_alignParentEnd="true"
+                    android:layout_margin="8dp"
+                    android:visibility="invisible"/>
+
+            </RelativeLayout>
 
             <Button
                 android:id="@+id/postButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="Post"/>
+                android:text="Post" />
         </LinearLayout>
     </ScrollView>
 

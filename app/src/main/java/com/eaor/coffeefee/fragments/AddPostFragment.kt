@@ -2,7 +2,6 @@ package com.eaor.coffeefee.fragments
 
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
@@ -14,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,7 +25,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.eaor.coffeefee.BuildConfig
 import com.eaor.coffeefee.MainActivity
 import com.eaor.coffeefee.R
 import com.eaor.coffeefee.adapters.ImageAdapter
@@ -48,7 +47,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.util.Arrays
 import java.util.UUID
 
 class AddPostFragment : Fragment() {
@@ -239,7 +237,7 @@ class AddPostFragment : Fragment() {
     }
     
     private fun showGenerateDescriptionOption() {
-        val generateDescBtn = view?.findViewById<Button>(R.id.generateDescriptionButton)
+        val generateDescBtn = view?.findViewById<ImageView>(R.id.generateDescriptionButton)
         if (generateDescBtn != null) {
             generateDescBtn.visibility = View.VISIBLE
             generateDescBtn.setOnClickListener {
