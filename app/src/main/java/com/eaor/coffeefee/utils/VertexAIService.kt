@@ -389,7 +389,8 @@ class VertexAIService private constructor() {
             $existingTagsString
             
             The tags should be relevant to coffee shop attributes, ambiance, offerings, and location preferences.
-            Only output the tags as a comma-separated list. For example: "artisanal, quiet, vegan-friendly, downtown"
+            Only output the tags as a comma-separated list. For example: "artisanal, quiet, vegan-friendly, downtown
+            Do not add any special characters, only key words as tags."
         """.trimIndent()
     }
 } 
