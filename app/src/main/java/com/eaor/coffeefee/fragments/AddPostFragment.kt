@@ -385,86 +385,95 @@ class AddPostFragment : Fragment() {
                 }
                 Log.d("AddPostFragment", "Broadcast sent for new post: ${documentReference.id}")
 
-                // Now check if the coffee shop exists
-                val coffeeShopRef = db.collection("CoffeeShops").document(selectedPlaceId!!)
-
-                coffeeShopRef.get().addOnSuccessListener { document ->
-                    if (document.exists()) {
-                        // Coffee shop exists, so merge the new tags with the existing tags
-                        val existingTags = document.get("tags") as? List<String> ?: listOf()
-                        val updatedTags = (existingTags + tags).distinct()  // Merge and remove duplicates
-
-                        // Update the coffee shop's tags field
-                        coffeeShopRef.update("tags", updatedTags)
-                            .addOnSuccessListener {
-                                Log.d("AddPostFragment", "Tags updated successfully")
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Post added and tags updated",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                findNavController().navigateUp()
-                                progressDialog.dismiss()
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e("AddPostFragment", "Error updating tags", e)
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Failed to update tags: ${e.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                progressDialog.dismiss()
-                            }
-                    } else {
-                        // Coffee shop does not exist, so create a new document with tags
-                        val coffeeShopData = mapOf(
-                            "name" to selectedPlaceName,
-                            "rating" to selectedPlaceRating,
-                            "description" to (selectedPlaceDescription ?: "No available description"),
-                            "latitude" to selectedLocation!!.latitude,
-                            "longitude" to selectedLocation!!.longitude,
-                            "placeId" to selectedPlaceId,
-                            "photoUrl" to selectedPlacePhotoUrl,
-                            "address" to (selectedPlaceAddress ?: ""),
-                            "tags" to tags // Include tags here
-                        )
-
-                        // Create the new coffee shop document
-                        coffeeShopRef.set(coffeeShopData)
-                            .addOnSuccessListener {
-                                Log.d("AddPostFragment", "Coffee shop added successfully")
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Post added and coffee shop data saved",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                findNavController().navigateUp()
-                                progressDialog.dismiss()
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e("AddPostFragment", "Error adding coffee shop", e)
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Failed to add coffee shop: ${e.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                progressDialog.dismiss()
-                            }
-                    }
+                // Now handle the coffee shop data when the post is actually saved
+                if (selectedPlaceId != null) {
+                    saveCoffeeShopData(tags, progressDialog)
+                } else {
+                    findNavController().navigateUp()
+                    progressDialog.dismiss()
                 }
-                    .addOnFailureListener { e ->
-                        Log.e("AddPostFragment", "Error checking coffee shop existence", e)
+            }
+            .addOnFailureListener { exception ->
+                Log.e("AddPostFragment", "Error adding post: ${exception.message}")
+                Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
+                progressDialog.dismiss()
+            }
+    }
+
+    private fun saveCoffeeShopData(tags: List<String>, progressDialog: android.app.ProgressDialog) {
+        val coffeeShopRef = db.collection("CoffeeShops").document(selectedPlaceId!!)
+        
+        coffeeShopRef.get().addOnSuccessListener { document ->
+            if (document.exists()) {
+                // Coffee shop exists, so merge the new tags with the existing tags
+                val existingTags = document.get("tags") as? List<String> ?: listOf()
+                val updatedTags = (existingTags + tags).distinct()  // Merge and remove duplicates
+
+                // Update the coffee shop's tags field
+                coffeeShopRef.update("tags", updatedTags)
+                    .addOnSuccessListener {
+                        Log.d("AddPostFragment", "Tags updated successfully")
                         Toast.makeText(
                             requireContext(),
-                            "Error checking coffee shop: ${e.message}",
+                            "Post added and tags updated",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        findNavController().navigateUp()
+                        progressDialog.dismiss()
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("AddPostFragment", "Error updating tags", e)
+                        Toast.makeText(
+                            requireContext(),
+                            "Failed to update tags: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        progressDialog.dismiss()
+                    }
+            } else {
+                // Coffee shop does not exist, so create a new document with tags
+                val coffeeShopData = mapOf(
+                    "name" to selectedPlaceName,
+                    "rating" to selectedPlaceRating,
+                    "description" to (selectedPlaceDescription ?: "No available description"),
+                    "latitude" to selectedLocation!!.latitude,
+                    "longitude" to selectedLocation!!.longitude,
+                    "placeId" to selectedPlaceId,
+                    "photoUrl" to selectedPlacePhotoUrl,
+                    "address" to (selectedPlaceAddress ?: ""),
+                    "tags" to tags // Include tags here
+                )
+
+                // Create the new coffee shop document
+                coffeeShopRef.set(coffeeShopData)
+                    .addOnSuccessListener {
+                        Log.d("AddPostFragment", "Coffee shop added successfully")
+                        Toast.makeText(
+                            requireContext(),
+                            "Post added and coffee shop data saved",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        findNavController().navigateUp()
+                        progressDialog.dismiss()
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("AddPostFragment", "Error adding coffee shop", e)
+                        Toast.makeText(
+                            requireContext(),
+                            "Failed to add coffee shop: ${e.message}",
                             Toast.LENGTH_SHORT
                         ).show()
                         progressDialog.dismiss()
                     }
             }
-            .addOnFailureListener { exception ->
-                Log.e("AddPostFragment", "Error adding post: ${exception.message}")
-                Toast.makeText(requireContext(), "Error adding post", Toast.LENGTH_SHORT).show()
+        }
+            .addOnFailureListener { e ->
+                Log.e("AddPostFragment", "Error checking coffee shop existence", e)
+                Toast.makeText(
+                    requireContext(),
+                    "Error checking coffee shop: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
                 progressDialog.dismiss()
             }
     }
@@ -530,7 +539,8 @@ class AddPostFragment : Fragment() {
     }
 
     private fun fetchPlaceDetails(placeId: String) {
-        // First check if the coffee shop already exists in Firestore
+        // Check if the coffee shop already exists in Firestore to get its data,
+        // but do not create a new one yet
         db.collection("CoffeeShops")
             .document(placeId)
             .get()
@@ -541,20 +551,21 @@ class AddPostFragment : Fragment() {
                     selectedPlacePhotoUrl = document.getString("photoUrl")
                     selectedPlaceDescription = document.getString("description")
                     selectedPlaceAddress = document.getString("address")
-                    Log.d("AddPostFragment", "Using existing coffee shop data: ${document.data}")
+                    Log.d("AddPostFragment", "Retrieved existing coffee shop data: ${document.data}")
                 } else {
-                    // Coffee shop doesn't exist, create it with complete data from Google
-                    createNewCoffeeShop(placeId)
+                    // Coffee shop doesn't exist, just get details from Google Places API
+                    // but don't save to Firestore yet
+                    getNewCoffeeShopDetails(placeId)
                 }
             }
             .addOnFailureListener { e ->
                 Log.e("AddPostFragment", "Error checking for existing coffee shop", e)
                 // Fallback to Places API
-                createNewCoffeeShop(placeId)
+                getNewCoffeeShopDetails(placeId)
             }
     }
 
-    private fun createNewCoffeeShop(placeId: String) {
+    private fun getNewCoffeeShopDetails(placeId: String) {
         // Get Fields to request
         val fields = listOf(
             Place.Field.ID, 
@@ -566,13 +577,18 @@ class AddPostFragment : Fragment() {
             Place.Field.EDITORIAL_SUMMARY
         )
         
-        Log.d("AddPostFragment", "Creating new coffee shop with place ID: $placeId")
+        Log.d("AddPostFragment", "Getting coffee shop details with place ID: $placeId")
         
         MainActivity.placesClient.fetchPlace(
             FetchPlaceRequest.newInstance(placeId, fields)
         ).addOnSuccessListener { response ->
             val place = response.place
             Log.d("AddPostFragment", "Successfully fetched place: ${place.name}")
+            
+            // Store the details locally but don't save to Firestore yet
+            selectedPlaceRating = place.rating?.toFloat()
+            selectedPlaceDescription = place.editorialSummary?.toString() ?: "No available description"
+            selectedPlaceAddress = place.address ?: "Address not available"
             
             // Get Google photo URL
             val photoMetadata = place.photoMetadatas?.firstOrNull()
@@ -584,19 +600,13 @@ class AddPostFragment : Fragment() {
                     val bitmap = fetchPhotoResponse.bitmap
                     Log.d("AddPostFragment", "Successfully fetched photo for place: ${place.name}")
                     
-                    // Upload to Firebase Storage and get URL
+                    // Just upload the photo to get the URL, but don't save the coffee shop yet
                     uploadBitmapToFirebase(bitmap, placeId) { url ->
-                        // Now save coffee shop with the photo URL
-                        saveCoffeeShopWithPhotoUrl(place, placeId, url)
+                        selectedPlacePhotoUrl = url
                     }
                 }.addOnFailureListener { e ->
-                    // Handle photo fetch failure, but still save the coffee shop
                     Log.e("AddPostFragment", "Error fetching place photo: ${e.message}")
-                    saveCoffeeShopWithPhotoUrl(place, placeId, null)
                 }
-            } else {
-                Log.d("AddPostFragment", "No photo available for place: ${place.name}")
-                saveCoffeeShopWithPhotoUrl(place, placeId, null)
             }
         }.addOnFailureListener { e ->
             Log.e("AddPostFragment", "Error fetching place details: ${e.message}")
@@ -656,42 +666,6 @@ class AddPostFragment : Fragment() {
         }
         
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-    }
-
-    private fun saveCoffeeShopWithPhotoUrl(place: Place, placeId: String, photoUrl: String?) {
-        // Create coffee shop data with all available information and fallbacks
-        val coffeeShopData = hashMapOf(
-            "name" to (place.name ?: "Unnamed Coffee Shop"),
-            "rating" to place.rating?.toDouble(),
-            "description" to (place.editorialSummary?.toString() 
-                ?: "No available description"),
-            "latitude" to (place.latLng?.latitude ?: 0.0),
-            "longitude" to (place.latLng?.longitude ?: 0.0),
-            "placeId" to placeId,
-            "address" to (place.address ?: "Address not available"),
-            "photoUrl" to photoUrl,
-            "createdAt" to FieldValue.serverTimestamp()
-        )
-        
-        Log.d("AddPostFragment", "Saving coffee shop with data: $coffeeShopData")
-        
-        // Save to Firestore
-        db.collection("CoffeeShops")
-            .document(placeId)
-            .set(coffeeShopData)
-            .addOnSuccessListener {
-                Log.d("AddPostFragment", "CoffeeShop saved successfully with photo URL: $photoUrl")
-                
-                // Update local variables for use in post creation
-                selectedPlaceRating = place.rating?.toFloat()
-                selectedPlacePhotoUrl = photoUrl
-                selectedPlaceDescription = place.editorialSummary?.toString() 
-                    ?: "No available description"
-                selectedPlaceAddress = place.address ?: "Address not available"
-            }
-            .addOnFailureListener { e ->
-                Log.e("AddPostFragment", "Error saving coffee shop: ${e.message}")
-            }
     }
 
     companion object {
