@@ -122,6 +122,16 @@ class SuggestionFragment : Fragment() {
                     val bundle = Bundle().apply {
                         putString("name", coffeeShop.name)
                         putString("description", coffeeShop.description)
+                        putFloat("latitude", coffeeShop.latitude.toFloat())
+                        putFloat("longitude", coffeeShop.longitude.toFloat())
+                        putString("placeId", coffeeShop.placeId)
+                        putString("photoUrl", coffeeShop.photoUrl)
+                        putString("address", coffeeShop.address)
+                        coffeeShop.rating?.let { rating ->
+                            if (rating > 0f) {
+                                putFloat("rating", rating)
+                            }
+                        }
                     }
                     findNavController().navigate(R.id.action_suggestionFragment_to_coffeeFragment, bundle)
                 }
